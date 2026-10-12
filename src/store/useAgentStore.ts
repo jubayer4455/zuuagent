@@ -1,13 +1,23 @@
 import { create } from 'zustand';
 import { Agent, AgentStatus, AgentConfig, AgentPrompt, PromptVersion } from '../types';
 import { initialAgents } from '../data/initialData';
+import { 
+  generateUUID, 
+  loadAgentsFromStorage, 
+  persistAgentCreate, 
+  persistAgentUpdate, 
+  persistAgentDelete,
+  isValidLifecycleTransition
+} from '../services/agentDatabaseService';
 
 interface AgentState {
   agents: Agent[];
   selectedAgentId: string | null;
   promptVersions: PromptVersion[];
+  isLoading: boolean;
   
   // Actions
+  initializeStore: () => Promise<void>;
   selectAgent: (id: string | null) => void;
   getAgentById: (id: string) => Agent | undefined;
   getAgentBySlug: (slug: string) => Agent | undefined;
@@ -16,7 +26,7 @@ interface AgentState {
   updateAgentConfig: (agentId: string, updates: Partial<AgentConfig>) => void;
   updateAgentPrompt: (agentId: string, content: string, changeSummary: string) => void;
   rollbackConfig: (agentId: string, targetVersion: number) => void;
-  setAgentStatus: (id: string, status: AgentStatus) => void;
+  setAgentStatus: (id: string, status: AgentStatus) => { success: boolean; error?: string };
   duplicateAgent: (sourceAgentId: string, newName?: string) => Agent | null;
   archiveAgent: (id: string) => void;
   deleteAgent: (id: string) => void;
@@ -25,6 +35,7 @@ interface AgentState {
 export const useAgentStore = create<AgentState>((set, get) => ({
   agents: initialAgents,
   selectedAgentId: initialAgents[0]?.id || null,
+  isLoading: false,
   promptVersions: [
     {
       id: 'pv-01',
@@ -38,17 +49,35 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
   ],
 
+  initializeStore: async () => {
+    set({ isLoading: true });
+    try {
+      const loaded = await loadAgentsFromStorage(initialAgents);
+      set({ 
+        agents: loaded,
+        selectedAgentId: loaded[0]?.id || null,
+        isLoading: false 
+      });
+    } catch (e) {
+      console.warn('[useAgentStore] Error loading agents:', e);
+      set({ isLoading: false });
+    }
+  },
+
   selectAgent: (id) => set({ selectedAgentId: id }),
 
   getAgentById: (id) => get().agents.find(a => a.id === id),
   getAgentBySlug: (slug) => get().agents.find(a => a.slug === slug),
 
   createAgent: (agentData, configData, systemPrompt) => {
-    const newId = `agent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    // Generate RFC 4122 standard UUID for PostgreSQL UUID column compatibility
+    const newId = generateUUID();
+    const configId = generateUUID();
+    const promptId = generateUUID();
     const slug = agentData.slug || agentData.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `agent-${Date.now()}`;
     
     const config: AgentConfig = {
-      id: `cfg_${newId}`,
+      id: configId,
       agentId: newId,
       version: 1,
       temperature: configData?.temperature ?? 0.7,
@@ -65,7 +94,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     };
 
     const prompt: AgentPrompt = {
-      id: `prompt_${newId}`,
+      id: promptId,
       agentId: newId,
       promptType: 'system',
       currentVersion: 1,
@@ -88,12 +117,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       isTemplate: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      enabledToolsCount: 0,
+      enabledToolsCount: agentData.enabledToolsCount || 0,
       config,
       prompts: [prompt]
     };
 
     set(state => ({ agents: [newAgent, ...state.agents] }));
+    // Persist asynchronously to DB & localStorage
+    persistAgentCreate(newAgent);
     return newAgent;
   },
 
@@ -105,6 +136,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           : agent
       )
     }));
+    persistAgentUpdate(id, updates);
   },
 
   updateAgentConfig: (agentId, updates) => {
@@ -112,7 +144,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       agents: state.agents.map(agent => {
         if (agent.id !== agentId) return agent;
         const currentConfig = agent.config || {
-          id: `cfg_${agentId}`,
+          id: generateUUID(),
           agentId,
           version: 1,
           temperature: 0.7,
@@ -127,12 +159,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           createdAt: new Date().toISOString()
         };
         const nextVersion = currentConfig.version + 1;
-        return {
+        const updatedConfig = { ...currentConfig, ...updates, version: nextVersion };
+        const updatedAgent = {
           ...agent,
           version: nextVersion,
-          config: { ...currentConfig, ...updates, version: nextVersion },
+          config: updatedConfig,
           updatedAt: new Date().toISOString()
         };
+        persistAgentCreate(updatedAgent);
+        return updatedAgent;
       })
     }));
   },
@@ -143,10 +178,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     const currentPrompt = agent.prompts?.[0];
     const nextVer = (currentPrompt?.currentVersion || 1) + 1;
-    const promptId = currentPrompt?.id || `prompt_${agentId}`;
+    const promptId = currentPrompt?.id || generateUUID();
 
     const newVersionRecord: PromptVersion = {
-      id: `pv_${Date.now()}`,
+      id: generateUUID(),
       agentPromptId: promptId,
       agentId,
       version: nextVer,
@@ -156,22 +191,26 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       createdAt: new Date().toISOString()
     };
 
+    const updatedPrompts = [{
+      id: promptId,
+      agentId,
+      promptType: 'system' as const,
+      currentVersion: nextVer,
+      content,
+      updatedAt: new Date().toISOString()
+    }];
+
     set(state => ({
       promptVersions: [newVersionRecord, ...state.promptVersions],
       agents: state.agents.map(a => {
         if (a.id !== agentId) return a;
-        return {
+        const updated = {
           ...a,
-          prompts: [{
-            id: promptId,
-            agentId,
-            promptType: 'system',
-            currentVersion: nextVer,
-            content,
-            updatedAt: new Date().toISOString()
-          }],
+          prompts: updatedPrompts,
           updatedAt: new Date().toISOString()
         };
+        persistAgentCreate(updated);
+        return updated;
       })
     }));
   },
@@ -180,7 +219,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set(state => ({
       agents: state.agents.map(a => {
         if (a.id !== agentId || !a.config) return a;
-        return {
+        const updated = {
           ...a,
           config: {
             ...a.config,
@@ -188,35 +227,58 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           },
           updatedAt: new Date().toISOString()
         };
+        persistAgentCreate(updated);
+        return updated;
       })
     }));
   },
 
-  setAgentStatus: (id, status) => {
+  setAgentStatus: (id, nextStatus) => {
+    const agent = get().getAgentById(id);
+    if (!agent) {
+      return { success: false, error: 'Agent not found' };
+    }
+
+    if (!isValidLifecycleTransition(agent.status, nextStatus)) {
+      return { 
+        success: false, 
+        error: `Invalid lifecycle transition from "${agent.status}" to "${nextStatus}".` 
+      };
+    }
+
     set(state => ({
       agents: state.agents.map(a => 
-        a.id === id ? { ...a, status, updatedAt: new Date().toISOString() } : a
+        a.id === id ? { ...a, status: nextStatus, updatedAt: new Date().toISOString() } : a
       )
     }));
+    persistAgentUpdate(id, { status: nextStatus });
+    return { success: true };
   },
 
   duplicateAgent: (sourceAgentId, newName) => {
     const source = get().getAgentById(sourceAgentId);
     if (!source) return null;
 
-    const newId = `agent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    // Strict security rule: Brand new UUID, zero leaked private credentials or tokens
+    const newId = generateUUID();
     const clonedName = newName || `${source.name} (Copy)`;
-    const clonedSlug = `${source.slug}-copy-${Date.now().toString(36)}`;
+    const clonedSlug = `${source.slug}-copy-${Math.random().toString(36).substring(2, 7)}`;
 
-    // Safe independent duplicate: NO private credentials, separate UUID
+    // Safe independent duplicate: Scrub any private credentials in metadata
+    const clonedMetadata = { ...(source.config?.metadata || {}) };
+    delete (clonedMetadata as any).pageAccessToken;
+    delete (clonedMetadata as any).apiSecret;
+    delete (clonedMetadata as any).credentials;
+
     const clonedConfig: AgentConfig = source.config ? {
       ...JSON.parse(JSON.stringify(source.config)),
-      id: `cfg_${newId}`,
+      id: generateUUID(),
       agentId: newId,
       version: 1,
+      metadata: clonedMetadata,
       createdAt: new Date().toISOString()
     } : {
-      id: `cfg_${newId}`,
+      id: generateUUID(),
       agentId: newId,
       version: 1,
       temperature: 0.7,
@@ -233,7 +295,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     const clonedPrompts: AgentPrompt[] = source.prompts ? source.prompts.map(p => ({
       ...p,
-      id: `prompt_${newId}_${p.promptType}`,
+      id: generateUUID(),
       agentId: newId,
       currentVersion: 1,
       updatedAt: new Date().toISOString()
@@ -261,15 +323,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     };
 
     set(state => ({ agents: [newAgent, ...state.agents] }));
+    persistAgentCreate(newAgent);
     return newAgent;
   },
 
   archiveAgent: (id) => {
-    set(state => ({
-      agents: state.agents.map(a => 
-        a.id === id ? { ...a, status: 'archived', updatedAt: new Date().toISOString() } : a
-      )
-    }));
+    const res = get().setAgentStatus(id, 'archived');
+    if (!res.success) {
+      // Force archive if needed
+      set(state => ({
+        agents: state.agents.map(a => 
+          a.id === id ? { ...a, status: 'archived', updatedAt: new Date().toISOString() } : a
+        )
+      }));
+      persistAgentUpdate(id, { status: 'archived' });
+    }
   },
 
   deleteAgent: (id) => {
@@ -277,5 +345,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       agents: state.agents.filter(a => a.id !== id),
       selectedAgentId: state.selectedAgentId === id ? null : state.selectedAgentId
     }));
+    persistAgentDelete(id);
   }
 }));
+
+// Auto-initialize on application startup
+if (typeof window !== 'undefined') {
+  useAgentStore.getState().initializeStore();
+}

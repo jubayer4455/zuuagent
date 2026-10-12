@@ -44,6 +44,13 @@ export const AllAgentsPage: React.FC = () => {
     }
   };
 
+  const handleStatusChange = (id: string, nextStatus: AgentStatus) => {
+    const res = setAgentStatus(id, nextStatus);
+    if (!res.success && res.error) {
+      alert(res.error);
+    }
+  };
+
   const handleQuickRun = async () => {
     if (!quickRunModalAgent) return;
     const prompt = taskInput.trim() || 'Execute default agent objective';
@@ -99,7 +106,9 @@ export const AllAgentsPage: React.FC = () => {
             <option value="active">Active</option>
             <option value="paused">Paused</option>
             <option value="draft">Draft</option>
+            <option value="testing">Testing</option>
             <option value="disabled">Disabled</option>
+            <option value="error">Error</option>
             <option value="archived">Archived</option>
           </select>
         </div>
@@ -171,7 +180,7 @@ export const AllAgentsPage: React.FC = () => {
               <div className="flex items-center space-x-2">
                 {agent.status === 'active' ? (
                   <button
-                    onClick={() => setAgentStatus(agent.id, 'paused')}
+                    onClick={() => handleStatusChange(agent.id, 'paused')}
                     className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition"
                     title="Pause Agent"
                   >
@@ -179,7 +188,7 @@ export const AllAgentsPage: React.FC = () => {
                   </button>
                 ) : (
                   <button
-                    onClick={() => setAgentStatus(agent.id, 'active')}
+                    onClick={() => handleStatusChange(agent.id, 'active')}
                     className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition"
                     title="Resume / Activate Agent"
                   >

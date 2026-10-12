@@ -245,11 +245,31 @@ export const AgentWorkspacePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons & Lifecycle Status */}
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={agent.status}
+              onChange={(e) => {
+                const res = setAgentStatus(agent.id, e.target.value as any);
+                if (!res.success && res.error) alert(res.error);
+              }}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-xs font-bold text-slate-200 capitalize focus:outline-none focus:border-cyan-500"
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="draft">Draft</option>
+              <option value="testing">Testing</option>
+              <option value="disabled">Disabled</option>
+              <option value="error">Error</option>
+              <option value="archived">Archived</option>
+            </select>
+
             {agent.status === 'active' ? (
               <button
-                onClick={() => setAgentStatus(agent.id, 'paused')}
+                onClick={() => {
+                  const res = setAgentStatus(agent.id, 'paused');
+                  if (!res.success && res.error) alert(res.error);
+                }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-amber-800/80 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 text-xs font-semibold transition"
               >
                 <Pause className="w-3.5 h-3.5" />
@@ -257,11 +277,14 @@ export const AgentWorkspacePage: React.FC = () => {
               </button>
             ) : (
               <button
-                onClick={() => setAgentStatus(agent.id, 'active')}
+                onClick={() => {
+                  const res = setAgentStatus(agent.id, 'active');
+                  if (!res.success && res.error) alert(res.error);
+                }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-emerald-800/80 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-semibold transition"
               >
                 <Play className="w-3.5 h-3.5" />
-                <span>Resume</span>
+                <span>Activate</span>
               </button>
             )}
 

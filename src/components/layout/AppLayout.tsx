@@ -40,6 +40,7 @@ import { useAuthStore, Permission } from '../../store/useAuthStore';
 import { useSystemStore } from '../../store/useSystemStore';
 import { useApprovalStore } from '../../store/useApprovalStore';
 import { UserRole } from '../../types';
+import { AuthModal } from '../auth/AuthModal';
 
 interface NavItem {
   id: string;
@@ -60,8 +61,9 @@ export const AppLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
-  const { currentUser, setCurrentRole, hasPermission } = useAuthStore();
+  const { currentUser, setCurrentRole, hasPermission, needsBootstrap, signOut } = useAuthStore();
   const { theme, toggleTheme, isDryRunGlobal, setDryRunGlobal, notifications, markNotificationAsRead } = useSystemStore();
   const { approvals } = useApprovalStore();
   const navigate = useNavigate();
@@ -140,6 +142,22 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className={`min-h-screen flex flex-col ${theme === 'dark' ? 'bg-[#0a0f1d] text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+      {/* First Admin Bootstrap Required Banner */}
+      {needsBootstrap && (
+        <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 px-4 py-2 text-xs font-semibold text-white flex items-center justify-between shadow-md z-50">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 animate-bounce" />
+            <span>First-Time Setup: No Master Administrator configured yet. Initialize your master admin account.</span>
+          </div>
+          <button 
+            onClick={() => setAuthModalOpen(true)}
+            className="px-3 py-1 bg-white text-orange-700 font-bold rounded-lg text-xs hover:bg-orange-50 transition shadow"
+          >
+            Bootstrap Admin Now
+          </button>
+        </div>
+      )}
+
       {/* Top Application Bar */}
       <header className={`h-16 border-b flex items-center justify-between px-4 sticky top-0 z-40 backdrop-blur-md ${
         theme === 'dark' ? 'bg-[#0f172a]/90 border-slate-800' : 'bg-white/90 border-slate-200 shadow-sm'
@@ -209,6 +227,20 @@ export const AppLayout: React.FC = () => {
                     {currentUser.systemRole === role && <span className="text-cyan-400">✓</span>}
                   </button>
                 ))}
+                <div className="border-t border-slate-800 pt-1 mt-1">
+                  <button
+                    onClick={() => { setAuthModalOpen(true); setRoleSwitcherOpen(false); }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-cyan-400 font-medium hover:bg-slate-800 transition"
+                  >
+                    🔑 Auth Setup / Sign In
+                  </button>
+                  <button
+                    onClick={() => { signOut(); setRoleSwitcherOpen(false); }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-rose-400 font-medium hover:bg-slate-800 transition"
+                  >
+                    🚪 Sign Out
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -342,6 +374,9 @@ export const AppLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Global Auth & First-Admin Bootstrap Modal */}
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );
 };
