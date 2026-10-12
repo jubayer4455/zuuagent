@@ -14,7 +14,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS organizations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) UNIQUE NOT NULL,
     plan VARCHAR(50) DEFAULT 'free',
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 CREATE TABLE IF NOT EXISTS memberships (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     role VARCHAR(50) DEFAULT 'operator' CHECK (role IN ('master_admin', 'admin', 'operator', 'reviewer', 'viewer')),
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS memberships (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS ai_providers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
     slug VARCHAR(100) UNIQUE NOT NULL,
     adapter_type VARCHAR(50) NOT NULL CHECK (adapter_type IN ('openai', 'anthropic', 'gemini', 'ollama', 'openrouter', 'custom')),
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS ai_providers (
 );
 
 CREATE TABLE IF NOT EXISTS provider_models (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider_id UUID NOT NULL REFERENCES ai_providers(id) ON DELETE CASCADE,
     model_identifier VARCHAR(150) NOT NULL,
     display_name VARCHAR(150) NOT NULL,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS provider_models (
 
 -- Encrypted server-side secret references (never stored unencrypted)
 CREATE TABLE IF NOT EXISTS secrets_vault (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     scope_type VARCHAR(50) NOT NULL CHECK (scope_type IN ('provider', 'integration', 'global')),
     scope_id UUID,
     secret_key_name VARCHAR(150) NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS secrets_vault (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS agents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) UNIQUE NOT NULL,
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 
 CREATE TABLE IF NOT EXISTS agent_configs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     version INT NOT NULL DEFAULT 1,
     temperature NUMERIC(3, 2) DEFAULT 0.7,
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS agent_configs (
 );
 
 CREATE TABLE IF NOT EXISTS agent_prompts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     prompt_type VARCHAR(50) DEFAULT 'system' CHECK (prompt_type IN ('system', 'instructions', 'task', 'tool_instruction', 'safety')),
     current_version INT DEFAULT 1,
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS agent_prompts (
 );
 
 CREATE TABLE IF NOT EXISTS prompt_versions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_prompt_id UUID NOT NULL REFERENCES agent_prompts(id) ON DELETE CASCADE,
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     version INT NOT NULL,
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS prompt_versions (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS tool_registry (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(150) UNIQUE NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS tool_registry (
 );
 
 CREATE TABLE IF NOT EXISTS agent_tools (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     tool_id UUID NOT NULL REFERENCES tool_registry(id) ON DELETE CASCADE,
     is_enabled BOOLEAN DEFAULT TRUE,
@@ -204,7 +204,7 @@ CREATE TABLE IF NOT EXISTS agent_tools (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS agent_memories (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
     scope VARCHAR(50) DEFAULT 'agent' CHECK (scope IN ('agent', 'shared', 'global')),
     category VARCHAR(50) NOT NULL CHECK (category IN (
@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS agent_memories (
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     file_type VARCHAR(50) DEFAULT 'text/plain',
@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_chunks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
     chunk_index INT NOT NULL,
     chunk_content TEXT NOT NULL,
@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_access (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     granted_at TIMESTAMPTZ DEFAULT NOW(),
@@ -262,7 +262,7 @@ CREATE TABLE IF NOT EXISTS knowledge_access (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS integration_connections (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
     provider VARCHAR(100) NOT NULL CHECK (provider IN ('meta_facebook', 'meta_instagram', 'telegram', 'slack', 'webhook', 'custom')),
     display_name VARCHAR(255) NOT NULL,
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS integration_connections (
 );
 
 CREATE TABLE IF NOT EXISTS publishing_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     integration_id UUID REFERENCES integration_connections(id) ON DELETE SET NULL,
     destination_type VARCHAR(50) DEFAULT 'facebook_page',
@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS publishing_records (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS workflows (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS workflows (
 );
 
 CREATE TABLE IF NOT EXISTS schedules (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     workflow_id UUID REFERENCES workflows(id) ON DELETE SET NULL,
     cron_expression VARCHAR(100) NOT NULL,
@@ -330,7 +330,7 @@ CREATE TABLE IF NOT EXISTS schedules (
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     schedule_id UUID REFERENCES schedules(id) ON DELETE SET NULL,
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     task_type VARCHAR(100) NOT NULL,
@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS executions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     trigger_type VARCHAR(50) NOT NULL CHECK (trigger_type IN ('manual', 'schedule', 'webhook', 'queue', 'agent_handoff')),
     status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
@@ -369,7 +369,7 @@ CREATE TABLE IF NOT EXISTS executions (
 );
 
 CREATE TABLE IF NOT EXISTS execution_steps (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     execution_id UUID NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
     step_number INT NOT NULL,
     step_name VARCHAR(150) NOT NULL,
@@ -383,7 +383,7 @@ CREATE TABLE IF NOT EXISTS execution_steps (
 );
 
 CREATE TABLE IF NOT EXISTS execution_outputs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     execution_id UUID NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     output_type VARCHAR(50) DEFAULT 'content_text' CHECK (output_type IN ('content_text', 'social_post', 'image_asset', 'json_data', 'report_doc')),
@@ -400,7 +400,7 @@ CREATE TABLE IF NOT EXISTS execution_outputs (
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS approvals (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     execution_id UUID REFERENCES executions(id) ON DELETE CASCADE,
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     action_type VARCHAR(100) NOT NULL,
@@ -417,7 +417,7 @@ CREATE TABLE IF NOT EXISTS approvals (
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recipient_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
     agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
     level VARCHAR(50) DEFAULT 'info' CHECK (level IN ('info', 'success', 'warning', 'error', 'critical')),
@@ -431,7 +431,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
     action VARCHAR(100) NOT NULL,
     entity_type VARCHAR(100) NOT NULL,
@@ -444,7 +444,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 CREATE TABLE IF NOT EXISTS usage_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     provider_id UUID REFERENCES ai_providers(id) ON DELETE SET NULL,
     model_name VARCHAR(150),
@@ -467,7 +467,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 );
 
 CREATE TABLE IF NOT EXISTS backup_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     backup_type VARCHAR(50) DEFAULT 'full_config' CHECK (backup_type IN ('full_config', 'agents_only', 'prompts_only', 'knowledge_only')),
     file_path TEXT NOT NULL,
     checksum VARCHAR(64) NOT NULL,
