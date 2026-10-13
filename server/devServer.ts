@@ -52,6 +52,10 @@ import handleWebhookTrigger from '../api/webhooks/trigger.ts';
 import handleReActRun from '../api/agents/react-run.ts';
 import handleMetaPublishPhoto from '../api/integrations/meta-publish-photo.ts';
 import handleExecutionsStream from '../api/executions/stream.ts';
+import handleFacebookExchangeToken from '../api/integrations/facebook/exchange-token.ts';
+import handleFacebookPages from '../api/integrations/facebook/pages.ts';
+import handleFacebookReplyComment from '../api/integrations/facebook/reply-comment.ts';
+import handleFacebookFeedAnalytics from '../api/integrations/facebook/feed-analytics.ts';
 import { BackgroundCronScheduler } from './scheduler.ts';
 
 const PORT = process.env.API_PORT || 3001;
@@ -187,6 +191,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/executions/stream') {
       return await handleExecutionsStream(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/integrations/facebook/exchange-token') {
+      return await handleFacebookExchangeToken(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/integrations/facebook/pages') {
+      return await handleFacebookPages(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/integrations/facebook/reply-comment') {
+      return await handleFacebookReplyComment(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/integrations/facebook/feed-analytics') {
+      return await handleFacebookFeedAnalytics(reqAdapter, resAdapter);
     }
 
     // 404 Fallback

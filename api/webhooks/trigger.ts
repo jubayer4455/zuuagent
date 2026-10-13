@@ -5,7 +5,7 @@
 // Stripe, GitHub, custom forms) and starts server-side workflow execution.
 // ==============================================================================
 
-import handleWorkflowRun from '../workflows/run.ts';
+import handleWorkflowRun from '../workflows/run';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

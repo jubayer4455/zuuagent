@@ -4,7 +4,7 @@
 // Runs autonomous multi-turn reasoning and tool-calling execution loops on server.
 // ==============================================================================
 
-import { ReActAgentEngine } from '../../src/services/ai/reactAgentEngine.ts';
+import { ReActAgentEngine } from '../../src/services/ai/reactAgentEngine';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
