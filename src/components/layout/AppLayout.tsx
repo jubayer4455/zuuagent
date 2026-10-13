@@ -17,6 +17,7 @@ import {
   Clock, 
   CheckSquare, 
   Calendar, 
+  Key, 
   Bell, 
   BarChart3, 
   FileText, 
@@ -74,21 +75,12 @@ export const AppLayout: React.FC = () => {
 
   const navigationGroups: NavGroup[] = [
     {
-      groupName: 'Core Operations',
+      groupName: 'Automation Engine',
       items: [
-        { id: 'overview', name: 'Overview', path: '/', icon: LayoutDashboard },
-        { id: 'agents', name: 'All Agents', path: '/agents', icon: Bot },
-        { id: 'create-agent', name: 'Create New Agent', path: '/agents/new', icon: PlusCircle, permission: 'agents.create' },
-        { id: 'templates', name: 'Agent Templates', path: '/templates', icon: Sparkles },
-        { id: 'marketplace', name: 'Agent Marketplace', path: '/marketplace', icon: Store }
-      ]
-    },
-    {
-      groupName: 'Execution & Orchestration',
-      items: [
-        { id: 'tasks', name: 'Tasks & Executions', path: '/tasks', icon: PlayCircle },
-        { id: 'workflow-builder', name: 'Workflow Builder', path: '/workflows', icon: GitFork },
-        { id: 'schedules', name: 'Schedules & Triggers', path: '/schedules', icon: Clock },
+        { id: 'workflows', name: 'Workflows & Canvas', path: '/workflows', icon: GitFork },
+        { id: 'credentials', name: 'Credentials & Connections', path: '/integrations', icon: Key },
+        { id: 'tasks', name: 'Executions & History', path: '/tasks', icon: PlayCircle },
+        { id: 'content-calendar', name: 'Content Calendar & Studio', path: '/content-calendar', icon: Calendar },
         { 
           id: 'approvals', 
           name: 'Approval Center', 
@@ -96,48 +88,25 @@ export const AppLayout: React.FC = () => {
           icon: CheckSquare, 
           permission: 'approvals.decide',
           badge: () => pendingApprovalsCount > 0 ? pendingApprovalsCount : null 
-        },
-        { 
-          id: 'content-calendar', 
-          name: 'Content Calendar & Studio', 
-          path: '/content-calendar', 
-          icon: Calendar 
         }
       ]
     },
     {
-      groupName: 'AI & Tools Engine',
+      groupName: 'AI & Intelligence',
       items: [
-        { id: 'providers', name: 'Global AI Providers', path: '/providers', icon: Cpu },
-        { id: 'integrations', name: 'API & Integrations', path: '/integrations', icon: Share2, permission: 'integrations.manage' },
-        { id: 'tools', name: 'Tool Registry', path: '/tools', icon: Wrench },
-        { id: 'prompts', name: 'Prompt Library', path: '/prompts', icon: Terminal, permission: 'prompts.edit' }
+        { id: 'agents', name: 'AI Agents & Personas', path: '/agents', icon: Bot },
+        { id: 'memory', name: 'Memory & Knowledge', path: '/memory', icon: BrainCircuit, permission: 'memory.manage' },
+        { id: 'prompts', name: 'Prompt Library', path: '/prompts', icon: Terminal, permission: 'prompts.edit' },
+        { id: 'tools', name: 'Tool Registry', path: '/tools', icon: Wrench }
       ]
     },
     {
-      groupName: 'Memory & Intelligence',
+      groupName: 'System & Platform',
       items: [
-        { id: 'memory', name: 'Memory Center', path: '/memory', icon: BrainCircuit, permission: 'memory.manage' },
-        { id: 'knowledge', name: 'Knowledge Base', path: '/knowledge', icon: BookOpen }
-      ]
-    },
-    {
-      groupName: 'Observability & Monitoring',
-      items: [
-        { id: 'analytics', name: 'Analytics', path: '/analytics', icon: BarChart3 },
-        { id: 'logs', name: 'Execution Logs', path: '/logs', icon: FileText },
-        { id: 'system-health', name: 'System Health', path: '/health', icon: Activity },
-        { id: 'usage-costs', name: 'Usage & Cost Controls', path: '/usage-costs', icon: Coins }
-      ]
-    },
-    {
-      groupName: 'Governance & Settings',
-      items: [
-        { id: 'users', name: 'Users & Permissions', path: '/users', icon: Users, permission: 'users.manage' },
-        { id: 'security-audit', name: 'Security & Audit Logs', path: '/audit-logs', icon: ShieldAlert },
+        { id: 'overview', name: 'System Analytics', path: '/analytics', icon: BarChart3 },
+        { id: 'health', name: 'Health & Diagnostics', path: '/health', icon: Activity },
         { id: 'backup-restore', name: 'Backup & Restore', path: '/backup-restore', permission: 'settings.edit', icon: DatabaseBackup },
-        { id: 'import-export', name: 'Import and Export', path: '/import-export', icon: DownloadCloud, permission: 'data.export' },
-        { id: 'general-settings', name: 'General Settings', path: '/settings', icon: Settings, permission: 'settings.edit' }
+        { id: 'settings', name: 'General Settings', path: '/settings', icon: Settings, permission: 'settings.edit' }
       ]
     }
   ];

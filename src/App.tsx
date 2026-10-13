@@ -34,7 +34,8 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AppLayout />}>
-          <Route index element={<OverviewPage />} />
+          <Route index element={<WorkflowBuilderPage />} />
+          <Route path="overview" element={<OverviewPage />} />
           <Route path="agents" element={<AllAgentsPage />} />
           <Route path="agents/new" element={<AgentBuilderPage />} />
           <Route path="agents/:id" element={<AgentWorkspacePage />} />
