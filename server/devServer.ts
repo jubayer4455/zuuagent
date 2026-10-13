@@ -1,6 +1,7 @@
 // ==============================================================================
-// Zuu Agent — Local Full-Stack Node Dev Server
-// Runs all server-side endpoints on localhost:3001 using native Node.js HTTP.
+// Zuu Agent — Local Full-Stack Node Dev Server & Orchestration Engine
+// Runs all server-side endpoints on localhost:3001 using native Node.js HTTP,
+// and starts the 24/7 background cron scheduler and ReAct execution services.
 // ==============================================================================
 
 import http from 'http';
@@ -45,6 +46,14 @@ import handleCronWorker from '../api/schedules/cron-worker.ts';
 import handleProviderTest from '../api/providers/test.ts';
 import handleFacebookDiagnostics from '../api/integrations/facebook/diagnostics.ts';
 
+// New n8n-parity server handlers
+import handleWorkflowRun from '../api/workflows/run.ts';
+import handleWebhookTrigger from '../api/webhooks/trigger.ts';
+import handleReActRun from '../api/agents/react-run.ts';
+import handleMetaPublishPhoto from '../api/integrations/meta-publish-photo.ts';
+import handleExecutionsStream from '../api/executions/stream.ts';
+import { BackgroundCronScheduler } from './scheduler.ts';
+
 const PORT = process.env.API_PORT || 3001;
 
 function createResponseAdapter(res: http.ServerResponse) {
@@ -58,6 +67,14 @@ function createResponseAdapter(res: http.ServerResponse) {
     setHeader(key: string, value: string) {
       headers[key] = value;
       res.setHeader(key, value);
+      return this;
+    },
+    write(chunk: any) {
+      res.write(chunk);
+      return this;
+    },
+    end(data?: any) {
+      res.end(data);
       return this;
     },
     status(statusCode: number) {
@@ -155,6 +172,23 @@ const server = http.createServer(async (req, res) => {
       return await handleFacebookDiagnostics(reqAdapter, resAdapter);
     }
 
+    // New n8n-Parity Workflow Engine Endpoints
+    if (pathname === '/api/workflows/run') {
+      return await handleWorkflowRun(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/webhooks/trigger') {
+      return await handleWebhookTrigger(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/agents/react-run') {
+      return await handleReActRun(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/integrations/meta-publish-photo') {
+      return await handleMetaPublishPhoto(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/executions/stream') {
+      return await handleExecutionsStream(reqAdapter, resAdapter);
+    }
+
     // 404 Fallback
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: `Route not found: ${pathname}` }));
@@ -167,4 +201,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[Zuu Agent API Server] Listening on http://localhost:${PORT}`);
+  // Start the background cron scheduler engine
+  BackgroundCronScheduler.start();
 });
