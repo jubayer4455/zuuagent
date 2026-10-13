@@ -44,7 +44,7 @@ export default async function handler(req: any, res: any) {
 
   // 2. Live Meta Graph API Probe: GET /me/accounts
   try {
-    const url = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,category,tasks,access_token,picture&access_token=${effectiveToken}`;
+    const url = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,category,access_token,picture&access_token=${effectiveToken}`;
     const response = await fetch(url);
     const data = await response.json();
 

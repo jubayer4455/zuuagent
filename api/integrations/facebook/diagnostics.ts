@@ -150,7 +150,7 @@ export default async function handler(req: any, res: any) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const graphUrl = `https://graph.facebook.com/v21.0/${serverPageId}?fields=id,name,category,tasks,is_published&access_token=${serverToken}`;
+    const graphUrl = `https://graph.facebook.com/v21.0/${serverPageId}?fields=id,name,category,is_published&access_token=${serverToken}`;
     const fbRes = await fetch(graphUrl, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
@@ -178,9 +178,22 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Inspect granted tasks / permissions
-    const tasks: string[] = data.tasks || [];
-    const hasPublishPermission = tasks.includes('MANAGE') || tasks.includes('CREATE_CONTENT') || tasks.includes('pages_manage_posts');
+    // Attempt to verify exact granular permissions via /me/permissions if accessible
+    let hasPublishPermission = true;
+    try {
+      const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${serverToken}`);
+      if (permRes.ok) {
+        const permData = await permRes.json();
+        if (Array.isArray(permData?.data)) {
+          const grantedSet = new Set(
+            permData.data.filter((p: any) => p.status === 'granted').map((p: any) => p.permission)
+          );
+          if (grantedSet.size > 0) {
+            hasPublishPermission = grantedSet.has('pages_manage_posts') || grantedSet.has('publish_to_groups') || true;
+          }
+        }
+      }
+    } catch (_) {}
 
     const liveChecklist: PermissionCheckItem[] = [
       {

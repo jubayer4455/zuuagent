@@ -76,7 +76,7 @@ export default async function handler(req: any, res: any) {
     const longLivedUserToken = exchangeData.access_token;
 
     // Step B: Fetch permanent page access tokens using the long-lived token
-    const accountsUrl = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,category,tasks,access_token&access_token=${longLivedUserToken}`;
+    const accountsUrl = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,category,access_token&access_token=${longLivedUserToken}`;
     const accountsRes = await fetch(accountsUrl);
     const accountsData = await accountsRes.json();
 
