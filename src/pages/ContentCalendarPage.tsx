@@ -22,6 +22,7 @@ import {
 import { useAgentStore } from '../store/useAgentStore';
 import { useApprovalStore } from '../store/useApprovalStore';
 import { useIntegrationStore } from '../store/useIntegrationStore';
+import { useProviderStore } from '../store/useProviderStore';
 import { MetaGraphClient } from '../services/facebook/metaGraphClient';
 import { AIProviderService } from '../services/ai/aiProviderAdapters';
 import { ImageProviderService } from '../services/ai/imageProviderService';
@@ -134,12 +135,16 @@ export const ContentCalendarPage: React.FC = () => {
     setEditorContent('');
     setGeneratedImageUrl('');
 
+    const geminiProvider = useProviderStore.getState().providers.find((p: any) => p.slug === 'google-gemini');
+    const geminiKey = geminiProvider?.apiKey || (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+
     const res = await AIProviderService.complete({
       providerSlug: 'google-gemini',
       model: 'gemini-2.0-flash',
       systemPrompt: trollogiyaAgent?.prompts?.[0]?.content || 'You are Trollogiya Content Agent specializing in viral Bengali social media humor.',
       userPrompt: `Write an engaging Bengali Facebook post for category "${selectedCategory}". Topic: ${topic}. Humor Scale: ${humorLevel}/10. Emotion Scale: ${emotionLevel}/10. Include punchline, emojis, and hashtags: #Trollogiya #DhakaLife`,
-      isDryRun: true
+      apiKey: geminiKey,
+      isDryRun: !geminiKey
     });
 
     setIsGeneratingContent(false);
@@ -216,10 +221,11 @@ export const ContentCalendarPage: React.FC = () => {
 
     const publishResult = await MetaGraphClient.publishToPage({
       pageId: fbConn.accountIdentifier,
+      pageAccessToken: fbConn.settings?.pageAccessToken,
       message: post.content,
       imageUrl: post.imageUrl,
       idempotencyKey: post.idempotencyKey,
-      isDryRun: Boolean(fbConn.settings?.dryRunSimulation ?? true),
+      isDryRun: Boolean(fbConn.settings?.dryRunSimulation ?? false),
       agentId: post.agentId,
       agentStatus: trollogiyaAgent.status
     });

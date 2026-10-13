@@ -152,6 +152,7 @@ export interface AIProvider {
   lastHealthCheck?: string;
   lastError?: string;
   hasStoredKey?: boolean; // Masked indicator for frontend
+  apiKey?: string;
 }
 
 export interface ProviderModel {

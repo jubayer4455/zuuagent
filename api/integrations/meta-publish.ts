@@ -52,6 +52,9 @@ export default async function handler(req: any, res: any) {
     imageUrl, 
     idempotencyKey, 
     pageIdOverride, 
+    tokenOverride,
+    accessToken,
+    pageAccessToken,
     isDryRun,
     agentId,
     agentStatus,
@@ -104,9 +107,10 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const serverToken = process.env.FB_PAGE_ACCESS_TOKEN;
-  const serverPageId = pageIdOverride || process.env.FB_PAGE_ID || '109847291834910';
-  const shouldSimulate = Boolean(isDryRun || !serverToken || serverToken.startsWith('mock_'));
+  const clientToken = tokenOverride || accessToken || pageAccessToken;
+  const serverToken = clientToken || process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+  const serverPageId = pageIdOverride || req.body?.pageId || process.env.FB_PAGE_ID || process.env.FACEBOOK_PAGE_ID || '109847291834910';
+  const shouldSimulate = Boolean(isDryRun || !serverToken || serverToken.startsWith('mock_') || serverToken === 'simulate');
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';

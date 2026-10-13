@@ -229,26 +229,34 @@ export default async function handler(req: any, res: any) {
         }
 
         case 'facebook_publish': {
-          const pageId = node.config?.pageId || process.env.FACEBOOK_PAGE_ID || '109847291834910';
-          const token = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '';
+          const pageId = node.config?.pageId || process.env.FB_PAGE_ID || process.env.FACEBOOK_PAGE_ID || '109847291834910';
+          const token = node.config?.accessToken || node.config?.tokenOverride || process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '';
           const message = pipelineContext.generatedContent || 'Autonomous post via Zuu Agent Workflow Engine.';
+          const imageUrl = node.config?.imageUrl || pipelineContext.imageUrl;
 
           let pubSuccess = true;
           let postId = `post_${pageId}_${Date.now()}`;
           let permalink = `https://www.facebook.com/${pageId}/posts/${postId}`;
 
           // If Live publishing is configured and token exists
-          if (!isDryRun && token && token.length > 20) {
+          if (!isDryRun && token && token.length > 20 && !token.startsWith('mock_')) {
             try {
-              const fbEndpoint = `https://graph.facebook.com/v21.0/${pageId}/feed`;
+              let fbEndpoint = `https://graph.facebook.com/v21.0/${pageId}/feed`;
+              let reqBody: Record<string, any> = { message, access_token: token };
+
+              if (imageUrl) {
+                fbEndpoint = `https://graph.facebook.com/v21.0/${pageId}/photos`;
+                reqBody = { caption: message, url: imageUrl, access_token: token };
+              }
+
               const fbRes = await fetch(fbEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, access_token: token })
+                body: JSON.stringify(reqBody)
               });
               const fbData = await fbRes.json();
-              if (fbRes.ok && fbData.id) {
-                postId = fbData.id;
+              if (fbRes.ok && (fbData.id || fbData.post_id)) {
+                postId = fbData.id || fbData.post_id;
                 permalink = `https://www.facebook.com/${postId}`;
               } else {
                 throw new Error(fbData?.error?.message || 'Facebook API error');

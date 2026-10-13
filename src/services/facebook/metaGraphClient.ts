@@ -92,6 +92,8 @@ export class MetaGraphClient {
           imageUrl,
           idempotencyKey,
           pageIdOverride: pageId,
+          tokenOverride: pageAccessToken,
+          pageAccessToken: pageAccessToken,
           isDryRun: Boolean(isDryRun),
           agentId,
           agentStatus,

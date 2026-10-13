@@ -12,8 +12,21 @@ interface ProviderState {
   getModelsByProvider: (providerId: string) => ProviderModel[];
 }
 
+const LOCAL_STORAGE_PROVIDERS_KEY = 'zuu_provider_credentials_v2';
+
+function loadInitialProviders(): AIProvider[] {
+  try {
+    const cached = localStorage.getItem(LOCAL_STORAGE_PROVIDERS_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  return initialProviders;
+}
+
 export const useProviderStore = create<ProviderState>((set, get) => ({
-  providers: initialProviders,
+  providers: loadInitialProviders(),
   models: initialModels,
 
   toggleProvider: (id, enabled) => {
@@ -25,13 +38,13 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   },
 
   saveProviderApiKey: async (id, apiKey) => {
-    // In production, encrypts and stores in Supabase secrets_vault.
-    // Frontend only receives masked confirmation.
-    set(state => ({
-      providers: state.providers.map(p => 
-        p.id === id ? { ...p, hasStoredKey: Boolean(apiKey), healthStatus: 'healthy', lastHealthCheck: new Date().toISOString() } : p
-      )
-    }));
+    const updated = get().providers.map(p => 
+      p.id === id ? { ...p, apiKey, hasStoredKey: Boolean(apiKey), healthStatus: 'healthy' as const, lastHealthCheck: new Date().toISOString() } : p
+    );
+    set({ providers: updated });
+    try {
+      localStorage.setItem(LOCAL_STORAGE_PROVIDERS_KEY, JSON.stringify(updated));
+    } catch (_) {}
     return true;
   },
 

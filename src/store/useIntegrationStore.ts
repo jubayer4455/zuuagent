@@ -53,8 +53,9 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
               lastError: undefined,
               settings: {
                 ...i.settings,
-                pageAccessToken: targetToken ? '***configured***' : i.settings?.pageAccessToken,
-                pageName: verification.details?.pageName || i.settings?.pageName
+                pageAccessToken: targetToken || i.settings?.pageAccessToken,
+                pageName: verification.details?.pageName || i.settings?.pageName,
+                hasConfiguredToken: Boolean(targetToken || i.settings?.pageAccessToken)
               }
             } 
           : i
@@ -108,8 +109,9 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
         lastError: verification.valid ? undefined : verification.errorMessage,
         settings: {
           ...i.settings,
+          pageAccessToken: pageAccessToken || i.settings?.pageAccessToken,
           pageName: pageName || verification.details?.pageName,
-          hasConfiguredToken: Boolean(pageAccessToken),
+          hasConfiguredToken: Boolean(pageAccessToken || i.settings?.pageAccessToken),
           dryRunSimulation: false // User connected real credentials, ready for live or safe use
         }
       };

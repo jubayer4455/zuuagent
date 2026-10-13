@@ -16,12 +16,17 @@ export default async function handler(req: any, res: any) {
   }
 
   const {
-    pageId = process.env.FACEBOOK_PAGE_ID || '109847291834910',
+    pageId: reqPageId,
     caption = '',
     imageUrl = 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800',
     idempotencyKey,
+    tokenOverride,
+    accessToken,
+    pageAccessToken,
     isDryRun = true
   } = req.body || {};
+
+  const pageId = reqPageId || process.env.FB_PAGE_ID || process.env.FACEBOOK_PAGE_ID || '109847291834910';
 
   if (!pageId || !caption) {
     return res.status(400).json({ error: 'pageId and caption are required for photo publishing.' });
@@ -38,11 +43,12 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const token = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '';
+  const clientToken = tokenOverride || accessToken || pageAccessToken;
+  const token = clientToken || process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '';
   const startTime = Date.now();
 
   // If Dry Run or no live token configured
-  if (isDryRun || !token || token.length < 20) {
+  if (isDryRun || !token || token.length < 20 || token.startsWith('mock_')) {
     processedPhotoKeys.add(effectiveKey);
     const simulatedPhotoId = `photo_${pageId}_${Date.now()}`;
 
