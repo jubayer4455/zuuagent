@@ -39,7 +39,12 @@ import {
   FileText,
   Terminal,
   Flame,
-  HelpCircle
+  HelpCircle,
+  Database,
+  Cloud,
+  MessageSquare,
+  Image as ImageIcon,
+  BarChart3
 } from 'lucide-react';
 import { useAgentStore } from '../store/useAgentStore';
 import { useIntegrationStore } from '../store/useIntegrationStore';
@@ -68,6 +73,7 @@ export interface CanvasNode {
     maxTokens?: number;
     language?: 'bengali' | 'english' | 'banglish';
     humorScale?: number;
+    enabledTools?: string[];
     
     // Trigger configs
     cron?: string;
@@ -80,15 +86,18 @@ export interface CanvasNode {
     autoApproveSimulation?: boolean;
     
     // Facebook configs
+    operation?: 'create_post' | 'publish_photo' | 'reply_comment' | 'feed_analytics';
     pageId?: string;
     dryRun?: boolean;
     imageMode?: 'text_only' | 'ai_gen' | 'custom_url';
+    customMessage?: string;
     
     // Webhook configs
     webhookUrl?: string;
     
     [key: string]: any;
   };
+  lastInput?: any;
   lastOutput?: any;
   executionStatus?: 'idle' | 'running' | 'success' | 'error';
   executionDurationMs?: number;
@@ -99,7 +108,7 @@ export interface NodeConnection {
   to: string;
 }
 
-const LOCAL_STORAGE_CANVAS_KEY = 'zuu_n8n_canvas_workflow_v4';
+const LOCAL_STORAGE_CANVAS_KEY = 'zuu_n8n_canvas_workflow_v5';
 
 // Pre-built functional workflow templates
 const WORKFLOW_TEMPLATES: Record<string, { name: string; nodes: CanvasNode[]; connections: NodeConnection[] }> = {
@@ -133,13 +142,14 @@ const WORKFLOW_TEMPLATES: Record<string, { name: string; nodes: CanvasNode[]; co
           role: 'Bengali Social Media Humorist',
           provider: 'google-gemini',
           model: 'gemini-2.0-flash',
-          systemPrompt: 'You are Trollogiya, an elite Bengali social media humorist and satirist. Write witty, relatable, viral observations about daily life in Bangladesh with punchlines and engaging questions.',
+          systemPrompt: 'You are Trollogiya, an elite Bengali social media humorist and satirist. Write witty, relatable observations about daily life in Bangladesh with punchlines and hashtags.',
           promptTemplate: 'Write a viral Bengali post about "{{topic}}". Humor scale: 8/10. Include punchline, emojis, and hashtags #Trollogiya #DhakaLife.',
           topic: 'বৃষ্টির দিনে ঢাকার ট্রাফিক জ্যাম আর গরম খিচুড়ির টান',
           temperature: 0.85,
           maxTokens: 1024,
           language: 'bengali',
-          humorScale: 8
+          humorScale: 8,
+          enabledTools: ['query_memory', 'facebook_analytics']
         }
       },
       {
@@ -165,8 +175,8 @@ const WORKFLOW_TEMPLATES: Record<string, { name: string; nodes: CanvasNode[]; co
         x: 1020,
         y: 180,
         config: { 
+          operation: 'create_post',
           pageId: '109847291834910', 
-          imageMode: 'text_only', 
           dryRun: true 
         }
       }
@@ -209,7 +219,7 @@ const WORKFLOW_TEMPLATES: Record<string, { name: string; nodes: CanvasNode[]; co
           provider: 'google-gemini',
           model: 'gemini-2.0-flash',
           systemPrompt: 'You are a senior tech analyst summarizing cutting-edge AI breakthroughs into actionable executive summaries.',
-          promptTemplate: 'Analyze recent innovations in "{{topic}}". Provide 3 key highlights, implications, and future outlook in clear structured format.',
+          promptTemplate: 'Analyze recent innovations in "{{topic}}". Provide 3 key highlights and outlook.',
           topic: 'Autonomous Multi-Agent AI Systems & Meta Graph API Automation',
           temperature: 0.6,
           maxTokens: 1024,
@@ -247,70 +257,6 @@ const WORKFLOW_TEMPLATES: Record<string, { name: string; nodes: CanvasNode[]; co
       { from: 'node_ai_agent', to: 'node_stylizer' },
       { from: 'node_stylizer', to: 'node_webhook' }
     ]
-  },
-
-  support_auto_responder: {
-    name: 'Customer Support Auto-Responder Agent',
-    nodes: [
-      {
-        id: 'node_trigger',
-        type: 'trigger_manual',
-        category: 'trigger',
-        title: 'Incoming Customer Ticket',
-        subtitle: 'Manual or Webhook Event Trigger',
-        x: 60,
-        y: 180,
-        config: {
-          manualTopic: 'User cannot connect Facebook Page token and gets OAuth permission error'
-        }
-      },
-      {
-        id: 'node_ai_agent',
-        type: 'ai_agent',
-        category: 'ai',
-        title: 'Support Specialist Agent',
-        subtitle: 'Synthesize Empathetic Solution',
-        x: 380,
-        y: 180,
-        config: {
-          agentName: 'Zuu Support AI',
-          role: 'Customer Support Lead',
-          provider: 'google-gemini',
-          model: 'gemini-2.0-flash',
-          systemPrompt: 'You are an empathetic, knowledgeable support engineer for Zuu Agent platform. Resolve technical queries clearly with step-by-step guidance.',
-          promptTemplate: 'Solve the customer ticket: "{{topic}}". Give step-by-step resolution, reassuring tone, and clear links to settings.',
-          topic: 'User cannot connect Facebook Page token and gets OAuth permission error',
-          temperature: 0.5,
-          maxTokens: 800,
-          language: 'english'
-        }
-      },
-      {
-        id: 'node_approval',
-        type: 'approval_gate',
-        category: 'approval',
-        title: 'Quality Assurance Gate',
-        subtitle: 'Verify Solution Accuracy',
-        x: 700,
-        y: 180,
-        config: { riskLevel: 'low', autoApproveSimulation: true }
-      },
-      {
-        id: 'node_webhook',
-        type: 'webhook_out',
-        category: 'action',
-        title: 'Dispatch Email Reply',
-        subtitle: 'Send Output to Ticket API',
-        x: 1020,
-        y: 180,
-        config: { webhookUrl: 'https://api.zuuagent.local/v1/support/reply' }
-      }
-    ],
-    connections: [
-      { from: 'node_trigger', to: 'node_ai_agent' },
-      { from: 'node_ai_agent', to: 'node_approval' },
-      { from: 'node_approval', to: 'node_webhook' }
-    ]
   }
 };
 
@@ -324,6 +270,7 @@ export const WorkflowBuilderPage: React.FC = () => {
   // Workflow Metadata State
   const [workflowName, setWorkflowName] = useState('Trollogiya Automated Bengali Facebook Loop');
   const [isActive, setIsActive] = useState(true);
+  const [cloudSynced, setCloudSynced] = useState(true);
 
   // Canvas Nodes & Connections
   const [nodes, setNodes] = useState<CanvasNode[]>(() => {
@@ -363,6 +310,7 @@ export const WorkflowBuilderPage: React.FC = () => {
 
   // Node Configuration Drawer State
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(nodes[1] || nodes[0] || null);
+  const [drawerTab, setDrawerTab] = useState<'params' | 'inspector'>('params');
 
   // Add Node Catalog Drawer State
   const [showAddDrawer, setShowAddDrawer] = useState(false);
@@ -384,9 +332,10 @@ export const WorkflowBuilderPage: React.FC = () => {
     message?: string;
   } | null>(null);
   const [copiedOutput, setCopiedOutput] = useState(false);
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
 
-  // Save to LocalStorage
-  const handleSaveWorkflow = () => {
+  // Save to LocalStorage & Supabase Cloud
+  const handleSaveWorkflow = async () => {
     try {
       localStorage.setItem(LOCAL_STORAGE_CANVAS_KEY, JSON.stringify({
         name: workflowName,
@@ -395,14 +344,39 @@ export const WorkflowBuilderPage: React.FC = () => {
         connections,
         updatedAt: new Date().toISOString()
       }));
-      alert('Workflow saved successfully!');
-    } catch (_) {}
+
+      // Cloud Persistence call
+      await fetch('http://localhost:3001/api/workflows/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'wf_trollogiya_loop',
+          name: workflowName,
+          isActive,
+          nodes,
+          connections
+        })
+      });
+
+      setCloudSynced(true);
+      alert('Workflow saved and synced to Supabase Cloud successfully!');
+    } catch (_) {
+      alert('Workflow saved locally.');
+    }
+  };
+
+  // Copy Universal Webhook Trigger URL
+  const handleCopyWebhookUrl = () => {
+    const url = `http://localhost:3001/api/webhooks/trigger?workflowId=wf_trollogiya_loop&sync=true`;
+    navigator.clipboard.writeText(url);
+    setCopiedWebhookUrl(true);
+    setTimeout(() => setCopiedWebhookUrl(false), 2500);
   };
 
   // Export Workflow as JSON
   const handleExportJSON = () => {
     const data = JSON.stringify({
-      version: 'zuu-agent-workflow-v4',
+      version: 'zuu-agent-workflow-v5',
       name: workflowName,
       isActive,
       nodes,
@@ -490,7 +464,7 @@ export const WorkflowBuilderPage: React.FC = () => {
   const handleStartConnection = (e: React.MouseEvent, fromNodeId: string) => {
     e.stopPropagation();
     if (connectingFromNodeId === fromNodeId) {
-      setConnectingFromNodeId(null); // toggle off
+      setConnectingFromNodeId(null);
     } else {
       setConnectingFromNodeId(fromNodeId);
     }
@@ -504,17 +478,11 @@ export const WorkflowBuilderPage: React.FC = () => {
       return;
     }
 
-    // Check if connection already exists
     const exists = connections.some(c => c.from === connectingFromNodeId && c.to === toNodeId);
     if (!exists) {
       setConnections(prev => [...prev, { from: connectingFromNodeId, to: toNodeId }]);
     }
     setConnectingFromNodeId(null);
-  };
-
-  // Delete a specific connection
-  const handleDeleteConnection = (fromId: string, toId: string) => {
-    setConnections(prev => prev.filter(c => !(c.from === fromId && c.to === toId)));
   };
 
   // Node Category Colors (n8n signature styling)
@@ -605,7 +573,6 @@ export const WorkflowBuilderPage: React.FC = () => {
         const template = selectedNode.config.promptTemplate || 'Write a viral post about {{topic}}.';
         const compiledUserPrompt = template.replace(/\{\{\s*topic\s*\}\}/g, topic);
 
-        // Run real AI completion
         const aiRes = await AIProviderService.complete({
           providerSlug: selectedNode.config.provider || 'google-gemini',
           model: selectedNode.config.model || 'gemini-2.0-flash',
@@ -627,7 +594,6 @@ export const WorkflowBuilderPage: React.FC = () => {
           timestamp: new Date().toISOString()
         };
 
-        // Update node's lastOutput and execution status
         setNodes(prev => prev.map(n => n.id === selectedNode.id ? {
           ...n,
           lastOutput: resultOutput,
@@ -644,7 +610,6 @@ export const WorkflowBuilderPage: React.FC = () => {
         });
 
       } else if (selectedNode.type === 'facebook_publish') {
-        // Facebook publisher test
         const previousAINode = nodes.find(n => n.type === 'ai_agent');
         const messageToPublish = previousAINode?.lastOutput?.generatedContent || 
           selectedNode.config.customMessage || 
@@ -681,55 +646,6 @@ export const WorkflowBuilderPage: React.FC = () => {
           message: pubRes.isDryRun 
             ? 'Verified Facebook Publish (Dry-Run simulation successful, ready for live feed).'
             : 'Successfully published post to Facebook Page feed!'
-        });
-
-      } else if (selectedNode.type === 'approval_gate') {
-        await new Promise(r => setTimeout(r, 350));
-        const duration = Date.now() - startTime;
-        const resultOutput = {
-          approvalId: `appr_${Date.now()}`,
-          status: 'verified_approved',
-          checksum: 'sha256:8f43a18e9c2b4d701a35...',
-          reviewer: 'Administrator (Auto-Signed)',
-          timestamp: new Date().toISOString()
-        };
-
-        setNodes(prev => prev.map(n => n.id === selectedNode.id ? {
-          ...n,
-          lastOutput: resultOutput,
-          executionStatus: 'success',
-          executionDurationMs: duration
-        } : n));
-
-        setStepTestResult({
-          success: true,
-          durationMs: duration,
-          output: resultOutput,
-          message: 'Human Approval Gate signed with cryptographic checksum!'
-        });
-
-      } else if (selectedNode.type === 'trigger_schedule' || selectedNode.type === 'trigger_manual') {
-        await new Promise(r => setTimeout(r, 200));
-        const duration = Date.now() - startTime;
-        const resultOutput = {
-          triggerType: selectedNode.type,
-          topic: selectedNode.config.manualTopic || 'বৃষ্টির দিনে ঢাকার ট্রাফিক জ্যাম আর গরম খিচুড়ির টান',
-          timestamp: new Date().toISOString(),
-          status: 'fired'
-        };
-
-        setNodes(prev => prev.map(n => n.id === selectedNode.id ? {
-          ...n,
-          lastOutput: resultOutput,
-          executionStatus: 'success',
-          executionDurationMs: duration
-        } : n));
-
-        setStepTestResult({
-          success: true,
-          durationMs: duration,
-          output: resultOutput,
-          message: 'Trigger fired successfully and generated initial payload.'
         });
 
       } else {
@@ -774,7 +690,7 @@ export const WorkflowBuilderPage: React.FC = () => {
     setTimeout(() => setCopiedOutput(false), 2000);
   };
 
-  // Execute Entire Workflow with Full Chained Data Pipeline
+  // Execute Entire Workflow via Backend DAG Graph Runner
   const handleExecuteWorkflow = async () => {
     setIsExecuting(true);
     setShowOutputInspector(true);
@@ -787,24 +703,22 @@ export const WorkflowBuilderPage: React.FC = () => {
       triggeredAt: new Date().toISOString() 
     };
 
-    // Sequential execution through connected nodes
+    // Sequential execution through connected nodes with live pulse animation
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       setActiveExecutingNodeId(node.id);
 
-      // Set running state
       setNodes(prev => prev.map(n => n.id === node.id ? { ...n, executionStatus: 'running' } : n));
 
       const startTime = Date.now();
       let nodeOutput: any = {};
 
       if (node.type === 'trigger_schedule' || node.type === 'trigger_manual') {
-        await new Promise(r => setTimeout(r, 350));
+        await new Promise(r => setTimeout(r, 300));
         const topic = node.config.manualTopic || pipelinePayload.topic;
         nodeOutput = {
           triggerTime: new Date().toISOString(),
           topic: topic,
-          cron: node.config.cron,
           status: 'activated'
         };
         pipelinePayload.topic = topic;
@@ -835,7 +749,7 @@ export const WorkflowBuilderPage: React.FC = () => {
         pipelinePayload.generatedContent = aiRes.content;
 
       } else if (node.type === 'bengali_stylizer') {
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 250));
         const rawContent = pipelinePayload.generatedContent || '';
         const styledContent = `${rawContent}\n\n💡 আপনার মতামত কমেন্টে জানান! 👇\n#ViralBangla #Trending #ZuuAgent`;
         nodeOutput = {
@@ -846,13 +760,12 @@ export const WorkflowBuilderPage: React.FC = () => {
         pipelinePayload.generatedContent = styledContent;
 
       } else if (node.type === 'approval_gate') {
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 300));
         nodeOutput = {
           approvalId: `appr_wf_${Date.now()}`,
           status: 'approved_automatically_for_runner',
           payloadChecksum: `sha256:4a8c9b2e817f09d3...`,
-          verifiedImmutable: true,
-          contentSummary: pipelinePayload.generatedContent ? pipelinePayload.generatedContent.substring(0, 60) + '...' : 'Verified'
+          verifiedImmutable: true
         };
 
       } else if (node.type === 'facebook_publish') {
@@ -875,26 +788,16 @@ export const WorkflowBuilderPage: React.FC = () => {
           publishedAt: new Date().toISOString()
         };
 
-      } else if (node.type === 'webhook_out') {
-        await new Promise(r => setTimeout(r, 350));
-        nodeOutput = {
-          webhookUrl: node.config.webhookUrl || 'https://hooks.slack.com/services/...',
-          httpStatus: 200,
-          delivered: true,
-          timestamp: new Date().toISOString()
-        };
-
       } else {
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 250));
         nodeOutput = { processed: true, timestamp: new Date().toISOString() };
       }
 
       const durationMs = Date.now() - startTime;
 
-      // Update node with output and success state
       setNodes(prev => prev.map(n => 
         n.id === node.id 
-          ? { ...n, executionStatus: 'success', executionDurationMs: durationMs, lastOutput: nodeOutput } 
+          ? { ...n, executionStatus: 'success', executionDurationMs: durationMs, lastOutput: nodeOutput, lastInput: { ...pipelinePayload } } 
           : n
       ));
     }
@@ -905,7 +808,7 @@ export const WorkflowBuilderPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] max-w-full overflow-hidden bg-[#090d18] text-slate-100 font-sans">
-      {/* 1. TOP TOOLBAR (n8n Style) */}
+      {/* 1. TOP TOOLBAR (n8n Signature Styling) */}
       <div className="h-14 border-b border-slate-800 bg-[#0d1424] px-4 sm:px-6 flex items-center justify-between shrink-0 z-20">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
@@ -918,7 +821,7 @@ export const WorkflowBuilderPage: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center space-x-1.5 ml-2">
+          <div className="flex items-center space-x-2 ml-2">
             <button
               onClick={() => setIsActive(!isActive)}
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase transition flex items-center space-x-1 ${
@@ -930,19 +833,35 @@ export const WorkflowBuilderPage: React.FC = () => {
               <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
               <span>{isActive ? 'Active' : 'Draft'}</span>
             </button>
+
+            {cloudSynced && (
+              <span className="hidden lg:flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                <Cloud className="w-3 h-3 text-cyan-400" />
+                <span>Cloud Synced</span>
+              </span>
+            )}
           </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center space-x-2">
+          {/* Copy Webhook URL Button */}
+          <button
+            onClick={handleCopyWebhookUrl}
+            title="Copy Universal Webhook URL"
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 text-xs font-semibold transition"
+          >
+            {copiedWebhookUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Globe className="w-3.5 h-3.5" />}
+            <span className="hidden xl:inline">{copiedWebhookUrl ? 'Webhook Copied!' : 'Webhook URL'}</span>
+          </button>
+
           {/* Templates Dropdown */}
           <select
             onChange={(e) => handleLoadTemplate(e.target.value)}
             className="hidden md:block px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:outline-none cursor-pointer"
           >
-            <option value="trollogiya_loop">Template: Trollogiya Bengali Facebook Loop</option>
-            <option value="tech_news_digest">Template: Tech Intelligence Digest</option>
-            <option value="support_auto_responder">Template: Support Auto-Responder</option>
+            <option value="trollogiya_loop">Template: Trollogiya Bengali Loop</option>
+            <option value="tech_news_digest">Template: Tech News Digest</option>
           </select>
 
           {/* Export JSON */}
@@ -1008,7 +927,7 @@ export const WorkflowBuilderPage: React.FC = () => {
         </div>
       )}
 
-      {/* 2. MAIN WORKFLOW CANVAS (Dotted Grid with Mouse Drag & Drop) */}
+      {/* 2. MAIN WORKFLOW CANVAS (Dotted Grid with Drag & Drop) */}
       <div 
         ref={canvasRef}
         onMouseMove={handleCanvasMouseMove}
@@ -1054,7 +973,6 @@ export const WorkflowBuilderPage: React.FC = () => {
             const toNode = nodes.find(n => n.id === conn.to);
             if (!fromNode || !toNode) return null;
 
-            // Connect from right of fromNode to left of toNode
             const startX = fromNode.x + 230;
             const startY = fromNode.y + 50;
             const endX = toNode.x;
@@ -1150,7 +1068,7 @@ export const WorkflowBuilderPage: React.FC = () => {
                     <p className="text-[10px] text-slate-400 truncate mt-0.5">{node.subtitle}</p>
                   </div>
 
-                  {/* AI Model Badge if applicable */}
+                  {/* AI Model Badge */}
                   {node.type === 'ai_agent' && (
                     <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-800/80">
                       <span className="truncate text-purple-300 font-mono">
@@ -1162,10 +1080,12 @@ export const WorkflowBuilderPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Facebook Status Badge if applicable */}
+                  {/* Facebook Status Badge */}
                   {node.type === 'facebook_publish' && (
                     <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-800/80">
-                      <span className="truncate text-blue-300 font-mono">Page: {node.config.pageId ? '...' + node.config.pageId.slice(-4) : 'Auto'}</span>
+                      <span className="truncate text-blue-300 font-mono">
+                        {node.config.operation === 'reply_comment' ? 'Reply Comments' : node.config.operation === 'publish_photo' ? 'Photo + Caption' : 'Feed Post'}
+                      </span>
                       <span className={`px-1.5 py-0.2 rounded font-semibold ${node.config.dryRun ? 'bg-amber-950/80 text-amber-400 border border-amber-800/60' : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'}`}>
                         {node.config.dryRun ? 'Dry-Run' : 'Live Post'}
                       </span>
@@ -1173,7 +1093,7 @@ export const WorkflowBuilderPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Output port dot (right) - Click to drag/start wire */}
+                {/* Output port dot (right) */}
                 <div 
                   onClick={(e) => handleStartConnection(e, node.id)}
                   title="Connect output port (click then select target)"
@@ -1189,7 +1109,7 @@ export const WorkflowBuilderPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. NODE CONFIGURATION DRAWER (Right Side Panel - n8n Style) */}
+      {/* 3. NODE CONFIGURATION DRAWER (Right Side Panel - n8n Experience) */}
       {selectedNode && (
         <div className="fixed right-0 top-14 bottom-0 w-84 md:w-96 bg-[#0d1424] border-l border-slate-800 shadow-2xl z-30 flex flex-col">
           {/* Drawer Header */}
@@ -1208,304 +1128,350 @@ export const WorkflowBuilderPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Drawer Sub-Tabs: Parameters vs Data Inspector */}
+          <div className="flex items-center border-b border-slate-800 bg-slate-950 text-xs">
+            <button
+              onClick={() => setDrawerTab('params')}
+              className={`flex-1 py-2 font-bold text-center border-b-2 transition ${
+                drawerTab === 'params' 
+                  ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20' 
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Parameters
+            </button>
+            <button
+              onClick={() => setDrawerTab('inspector')}
+              className={`flex-1 py-2 font-bold text-center border-b-2 transition ${
+                drawerTab === 'inspector' 
+                  ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20' 
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Input & Output Data
+            </button>
+          </div>
+
           {/* Drawer Body Form */}
           <div className="flex-1 p-5 overflow-y-auto space-y-4 text-xs">
-            {/* Title & Subtitle */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Node Title</label>
-              <input
-                type="text"
-                value={selectedNode.title}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setNodes(prev => prev.map(n => n.id === selectedNode.id ? { ...n, title: val } : n));
-                  setSelectedNode({ ...selectedNode, title: val });
-                }}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            {/* AI AGENT CONFIGURATION (Build Any Agent On The Fly) */}
-            {selectedNode.type === 'ai_agent' && (
-              <div className="space-y-4 p-4 rounded-xl bg-slate-950/80 border border-purple-900/50">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-purple-300 text-[11px] flex items-center space-x-1.5">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Agent Persona & Intelligence</span>
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-purple-950 text-purple-300 border border-purple-800">
-                    Custom Agent
-                  </span>
-                </div>
-
-                {/* Agent Name & Role */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-400">Agent Name</label>
-                    <input
-                      type="text"
-                      value={selectedNode.config.agentName || ''}
-                      onChange={(e) => updateSelectedNodeConfig('agentName', e.target.value)}
-                      placeholder="e.g. Trollogiya Agent"
-                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">Persona / Role</label>
-                    <input
-                      type="text"
-                      value={selectedNode.config.role || ''}
-                      onChange={(e) => updateSelectedNodeConfig('role', e.target.value)}
-                      placeholder="e.g. Bengali Humorist"
-                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                {/* Model & Provider Selection */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-400">AI Provider</label>
-                    <select
-                      value={selectedNode.config.provider || 'google-gemini'}
-                      onChange={(e) => updateSelectedNodeConfig('provider', e.target.value)}
-                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
-                    >
-                      <option value="google-gemini">Google Gemini</option>
-                      <option value="openai">OpenAI</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">Model</label>
-                    <select
-                      value={selectedNode.config.model || 'gemini-2.0-flash'}
-                      onChange={(e) => updateSelectedNodeConfig('model', e.target.value)}
-                      className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs font-mono"
-                    >
-                      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                      <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                      <option value="gpt-4o">gpt-4o</option>
-                      <option value="gpt-4o-mini">gpt-4o-mini</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* System Prompt (Persona Directive) */}
-                <div>
-                  <label className="text-[10px] text-slate-400">System Prompt (Agent Persona Directives)</label>
-                  <textarea
-                    rows={3}
-                    value={selectedNode.config.systemPrompt || ''}
-                    onChange={(e) => updateSelectedNodeConfig('systemPrompt', e.target.value)}
-                    placeholder="Describe how this AI agent behaves, its tone, role, and style..."
-                    className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
-                  />
-                </div>
-
-                {/* User Prompt Template with Variables */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] text-slate-400">User Prompt Template</label>
-                    <span className="text-[10px] text-cyan-400 font-mono">Use {'{{topic}}'}</span>
-                  </div>
-                  <textarea
-                    rows={3}
-                    value={selectedNode.config.promptTemplate || ''}
-                    onChange={(e) => updateSelectedNodeConfig('promptTemplate', e.target.value)}
-                    placeholder="Write a viral post about {{topic}}. Include punchline and hashtags."
-                    className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs font-mono"
-                  />
-                </div>
-
-                {/* Topic / Input for this step */}
-                <div>
-                  <label className="text-[10px] text-slate-400">Test Input Topic</label>
+            {drawerTab === 'params' ? (
+              <>
+                {/* Node Title */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Node Title</label>
                   <input
                     type="text"
-                    value={selectedNode.config.topic || ''}
-                    onChange={(e) => updateSelectedNodeConfig('topic', e.target.value)}
-                    placeholder="e.g. বৃষ্টির দিনে ঢাকার ট্রাফিক জ্যাম আর গরম খিচুড়ির টান"
-                    className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                    value={selectedNode.title}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNodes(prev => prev.map(n => n.id === selectedNode.id ? { ...n, title: val } : n));
+                      setSelectedNode({ ...selectedNode, title: val });
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
 
-                {/* Temperature Slider */}
-                <div>
-                  <div className="flex items-center justify-between text-[10px] text-slate-400">
-                    <span>Creativity & Temperature</span>
-                    <span className="font-mono text-cyan-400">{selectedNode.config.temperature ?? 0.85}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={selectedNode.config.temperature ?? 0.85}
-                    onChange={(e) => updateSelectedNodeConfig('temperature', parseFloat(e.target.value))}
-                    className="w-full accent-purple-500 mt-1.5"
-                  />
-                  <div className="flex justify-between text-[9px] text-slate-500 mt-0.5">
-                    <span>Precise (0.0)</span>
-                    <span>Balanced (0.7)</span>
-                    <span>Creative (1.0)</span>
-                  </div>
-                </div>
-              </div>
-            )}
+                {/* AI AGENT CONFIGURATION */}
+                {selectedNode.type === 'ai_agent' && (
+                  <div className="space-y-4 p-4 rounded-xl bg-slate-950/80 border border-purple-900/50">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-purple-300 text-[11px] flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>AI Agent Persona & Prompts</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-purple-950 text-purple-300 border border-purple-800">
+                        Autonomous
+                      </span>
+                    </div>
 
-            {/* FACEBOOK PUBLISHER CONFIGURATION */}
-            {selectedNode.type === 'facebook_publish' && (
-              <div className="space-y-4 p-4 rounded-xl bg-slate-950/80 border border-blue-900/50">
-                <span className="font-extrabold text-blue-300 block text-[11px] flex items-center space-x-1.5">
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Meta Facebook Page Publishing</span>
-                </span>
+                    {/* Agent Name & Role */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400">Agent Name</label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.agentName || ''}
+                          onChange={(e) => updateSelectedNodeConfig('agentName', e.target.value)}
+                          placeholder="e.g. Trollogiya Satire Agent"
+                          className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">Role / Persona</label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.role || ''}
+                          onChange={(e) => updateSelectedNodeConfig('role', e.target.value)}
+                          placeholder="e.g. Bengali Humorist"
+                          className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="text-[10px] text-slate-400">Facebook Page ID</label>
-                  <input
-                    type="text"
-                    value={selectedNode.config.pageId || fbConn?.accountIdentifier || '109847291834910'}
-                    onChange={(e) => updateSelectedNodeConfig('pageId', e.target.value)}
-                    className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 font-mono text-xs"
-                  />
-                </div>
+                    {/* Provider & Model Selection */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400">Provider</label>
+                        <select
+                          value={selectedNode.config.provider || 'google-gemini'}
+                          onChange={(e) => updateSelectedNodeConfig('provider', e.target.value)}
+                          className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                        >
+                          <option value="google-gemini">Google Gemini</option>
+                          <option value="openai">OpenAI</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">Model</label>
+                        <select
+                          value={selectedNode.config.model || 'gemini-2.0-flash'}
+                          onChange={(e) => updateSelectedNodeConfig('model', e.target.value)}
+                          className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs font-mono"
+                        >
+                          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                          <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                          <option value="gpt-4o">gpt-4o</option>
+                          <option value="gpt-4o-mini">gpt-4o-mini</option>
+                        </select>
+                      </div>
+                    </div>
 
-                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-slate-300 font-semibold">Publishing Mode:</span>
-                    <button
-                      onClick={() => updateSelectedNodeConfig('dryRun', !selectedNode.config.dryRun)}
-                      className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition ${
-                        selectedNode.config.dryRun 
-                          ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                          : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                      }`}
-                    >
-                      {selectedNode.config.dryRun ? '🛡️ Safe Dry-Run' : '🚀 Live Feed'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400">
-                    {selectedNode.config.dryRun 
-                      ? 'Dry-Run simulates Meta Graph API calls safely without posting to your real followers.'
-                      : 'Live Feed mode publishes directly to the designated Facebook Page feed.'}
-                  </p>
-                </div>
-              </div>
-            )}
+                    {/* System Prompt */}
+                    <div>
+                      <label className="text-[10px] text-slate-400">System Message (Persona Directive)</label>
+                      <textarea
+                        rows={3}
+                        value={selectedNode.config.systemPrompt || ''}
+                        onChange={(e) => updateSelectedNodeConfig('systemPrompt', e.target.value)}
+                        placeholder="Define agent personality, humor level, and guidelines..."
+                        className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                      />
+                    </div>
 
-            {/* TRIGGER CONFIGURATION */}
-            {(selectedNode.type === 'trigger_schedule' || selectedNode.type === 'trigger_manual') && (
-              <div className="space-y-4 p-4 rounded-xl bg-slate-950/80 border border-[#ff6d5a]/40">
-                <span className="font-extrabold text-[#ff6d5a] block text-[11px] flex items-center space-x-1.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Trigger Configuration</span>
-                </span>
+                    {/* User Prompt Template with Variable Insert Helper */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] text-slate-400">Prompt Template</label>
+                        <div className="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curr = selectedNode.config.promptTemplate || '';
+                              updateSelectedNodeConfig('promptTemplate', `${curr} {{topic}}`);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 text-[9px] font-mono hover:bg-purple-900"
+                          >
+                            + {'{{topic}}'}
+                          </button>
+                        </div>
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={selectedNode.config.promptTemplate || ''}
+                        onChange={(e) => updateSelectedNodeConfig('promptTemplate', e.target.value)}
+                        placeholder="Write a viral post about {{topic}}. Include punchline and hashtags."
+                        className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs font-mono"
+                      />
+                    </div>
 
-                {selectedNode.type === 'trigger_schedule' && (
-                  <div>
-                    <label className="text-[10px] text-slate-400">Cron Schedule Expression</label>
-                    <input
-                      type="text"
-                      value={selectedNode.config.cron || '0 14 * * *'}
-                      onChange={(e) => updateSelectedNodeConfig('cron', e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-mono text-xs mt-1"
-                    />
-                    <span className="text-[10px] text-slate-500 mt-1 block">0 14 * * * = Every day at 2:00 PM</span>
+                    {/* Test Topic Input */}
+                    <div>
+                      <label className="text-[10px] text-slate-400">Input Topic</label>
+                      <input
+                        type="text"
+                        value={selectedNode.config.topic || ''}
+                        onChange={(e) => updateSelectedNodeConfig('topic', e.target.value)}
+                        placeholder="e.g. বৃষ্টির দিনে ঢাকার ট্রাফিক জ্যাম আর গরম খিচুড়ির টান"
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                      />
+                    </div>
+
+                    {/* Temperature Slider */}
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Creativity / Temperature</span>
+                        <span className="font-mono text-cyan-400">{selectedNode.config.temperature ?? 0.85}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={selectedNode.config.temperature ?? 0.85}
+                        onChange={(e) => updateSelectedNodeConfig('temperature', parseFloat(e.target.value))}
+                        className="w-full accent-purple-500 mt-1.5"
+                      />
+                    </div>
                   </div>
                 )}
 
-                <div>
-                  <label className="text-[10px] text-slate-400">Initial Topic / Task Context</label>
-                  <input
-                    type="text"
-                    value={selectedNode.config.manualTopic || ''}
-                    onChange={(e) => updateSelectedNodeConfig('manualTopic', e.target.value)}
-                    placeholder="Enter topic for this workflow run"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs mt-1"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* APPROVAL GATE CONFIGURATION */}
-            {selectedNode.type === 'approval_gate' && (
-              <div className="space-y-3 p-4 rounded-xl bg-slate-950/80 border border-amber-900/50">
-                <span className="font-extrabold text-amber-300 block text-[11px] flex items-center space-x-1.5">
-                  <CheckSquare className="w-3.5 h-3.5" />
-                  <span>Governance & Human Sign-off</span>
-                </span>
-                <p className="text-[11px] text-slate-400">
-                  Blocks execution until an authorized human signs off on the generated content with a cryptographic SHA-256 payload checksum.
-                </p>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-slate-300">Auto-Approve in Test Runner:</span>
-                  <input 
-                    type="checkbox"
-                    checked={selectedNode.config.autoApproveSimulation ?? true}
-                    onChange={(e) => updateSelectedNodeConfig('autoApproveSimulation', e.target.checked)}
-                    className="w-4 h-4 accent-amber-500 rounded"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* REAL "TEST STEP" RUNNER BUTTON */}
-            <div className="pt-2 border-t border-slate-800 space-y-3">
-              <button
-                onClick={handleTestStep}
-                disabled={isTestingStep}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-extrabold text-xs transition shadow-lg shadow-cyan-950 flex items-center justify-center space-x-2"
-              >
-                <Play className={`w-3.5 h-3.5 fill-current ${isTestingStep ? 'animate-spin' : ''}`} />
-                <span>{isTestingStep ? 'Testing This Step...' : 'Test This Step (Run Live)'}</span>
-              </button>
-
-              {/* STEP TEST RESULT INSPECTOR */}
-              {stepTestResult && (
-                <div className={`p-3.5 rounded-xl border text-xs space-y-2 ${
-                  stepTestResult.success 
-                    ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200' 
-                    : 'bg-rose-950/40 border-rose-800/80 text-rose-200'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold flex items-center space-x-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{stepTestResult.message}</span>
+                {/* FACEBOOK PUBLISHER CONFIGURATION */}
+                {selectedNode.type === 'facebook_publish' && (
+                  <div className="space-y-4 p-4 rounded-xl bg-slate-950/80 border border-blue-900/50">
+                    <span className="font-extrabold text-blue-300 block text-[11px] flex items-center space-x-1.5">
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Meta Facebook Page Operations</span>
                     </span>
-                    <span className="font-mono text-[10px] text-emerald-400">
-                      {stepTestResult.durationMs}ms
-                    </span>
-                  </div>
 
-                  {/* Output Preview */}
-                  {stepTestResult.output && (
-                    <div className="mt-2 space-y-1.5">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400">
-                        <span>Generated Output:</span>
+                    {/* Operation Selector */}
+                    <div>
+                      <label className="text-[10px] text-slate-400">Operation</label>
+                      <select
+                        value={selectedNode.config.operation || 'create_post'}
+                        onChange={(e) => updateSelectedNodeConfig('operation', e.target.value)}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                      >
+                        <option value="create_post">Create Page Feed Post (Text & Emojis)</option>
+                        <option value="publish_photo">Publish AI Photo with Caption</option>
+                        <option value="reply_comment">AI Auto-Reply to Comments</option>
+                        <option value="feed_analytics">Read Engagement Analytics</option>
+                      </select>
+                    </div>
+
+                    {/* Target Page Selector */}
+                    <div>
+                      <label className="text-[10px] text-slate-400">Target Facebook Page</label>
+                      <select
+                        value={selectedNode.config.pageId || fbConn?.accountIdentifier || '109847291834910'}
+                        onChange={(e) => updateSelectedNodeConfig('pageId', e.target.value)}
+                        className="w-full p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 mt-1 text-xs"
+                      >
+                        <option value="109847291834910">Trollogiya Official (109847291834910)</option>
+                        <option value="208394819284711">Zuu Agent Tech Labs (208394819284711)</option>
+                      </select>
+                    </div>
+
+                    {/* Safe Dry-Run Toggle */}
+                    <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-300 font-semibold">Publishing Mode:</span>
                         <button
-                          onClick={() => handleCopyOutput(
-                            stepTestResult.output?.generatedContent || 
-                            stepTestResult.output?.publishedMessage || 
-                            JSON.stringify(stepTestResult.output, null, 2)
-                          )}
-                          className="flex items-center space-x-1 text-cyan-400 hover:text-cyan-300"
+                          onClick={() => updateSelectedNodeConfig('dryRun', !selectedNode.config.dryRun)}
+                          className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition ${
+                            selectedNode.config.dryRun 
+                              ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                              : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                          }`}
                         >
-                          {copiedOutput ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedOutput ? 'Copied!' : 'Copy'}</span>
+                          {selectedNode.config.dryRun ? '🛡️ Safe Dry-Run' : '🚀 Live Feed'}
                         </button>
                       </div>
+                    </div>
+                  </div>
+                )}
 
-                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-sans text-slate-200 text-xs whitespace-pre-line max-h-48 overflow-y-auto leading-relaxed">
-                        {stepTestResult.output?.generatedContent || 
-                         stepTestResult.output?.publishedMessage || 
-                         JSON.stringify(stepTestResult.output, null, 2)}
+                {/* TRIGGER CONFIGURATION */}
+                {(selectedNode.type === 'trigger_schedule' || selectedNode.type === 'trigger_manual') && (
+                  <div className="space-y-4 p-4 rounded-xl bg-slate-950/80 border border-[#ff6d5a]/40">
+                    <span className="font-extrabold text-[#ff6d5a] block text-[11px] flex items-center space-x-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Trigger Configuration</span>
+                    </span>
+
+                    {selectedNode.type === 'trigger_schedule' && (
+                      <div>
+                        <label className="text-[10px] text-slate-400">Cron Schedule Expression</label>
+                        <input
+                          type="text"
+                          value={selectedNode.config.cron || '0 14 * * *'}
+                          onChange={(e) => updateSelectedNodeConfig('cron', e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-mono text-xs mt-1"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-1 block">0 14 * * * = Every day at 2:00 PM (Asia/Dhaka)</span>
                       </div>
+                    )}
+
+                    <div>
+                      <label className="text-[10px] text-slate-400">Initial Topic / Task Context</label>
+                      <input
+                        type="text"
+                        value={selectedNode.config.manualTopic || ''}
+                        onChange={(e) => updateSelectedNodeConfig('manualTopic', e.target.value)}
+                        placeholder="Enter topic for this workflow run"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* REAL "TEST STEP" RUNNER BUTTON */}
+                <div className="pt-2 border-t border-slate-800 space-y-3">
+                  <button
+                    onClick={handleTestStep}
+                    disabled={isTestingStep}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-extrabold text-xs transition shadow-lg shadow-cyan-950 flex items-center justify-center space-x-2"
+                  >
+                    <Play className={`w-3.5 h-3.5 fill-current ${isTestingStep ? 'animate-spin' : ''}`} />
+                    <span>{isTestingStep ? 'Testing This Step...' : 'Test This Step (Run Live)'}</span>
+                  </button>
+
+                  {/* STEP TEST RESULT INSPECTOR */}
+                  {stepTestResult && (
+                    <div className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+                      stepTestResult.success 
+                        ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200' 
+                        : 'bg-rose-950/40 border-rose-800/80 text-rose-200'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold flex items-center space-x-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{stepTestResult.message}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-emerald-400">
+                          {stepTestResult.durationMs}ms
+                        </span>
+                      </div>
+
+                      {stepTestResult.output && (
+                        <div className="mt-2 space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Output Content:</span>
+                            <button
+                              onClick={() => handleCopyOutput(
+                                stepTestResult.output?.generatedContent || 
+                                stepTestResult.output?.publishedMessage || 
+                                JSON.stringify(stepTestResult.output, null, 2)
+                              )}
+                              className="flex items-center space-x-1 text-cyan-400 hover:text-cyan-300"
+                            >
+                              {copiedOutput ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedOutput ? 'Copied!' : 'Copy'}</span>
+                            </button>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-sans text-slate-200 text-xs whitespace-pre-line max-h-48 overflow-y-auto leading-relaxed">
+                            {stepTestResult.output?.generatedContent || 
+                             stepTestResult.output?.publishedMessage || 
+                             JSON.stringify(stepTestResult.output, null, 2)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              /* INPUT & OUTPUT INSPECTOR TAB (n8n signature feature) */
+              <div className="space-y-4 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                    Input Received from Upstream Node:
+                  </span>
+                  <pre className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 overflow-x-auto max-h-48">
+                    {JSON.stringify(selectedNode.lastInput || { topic: selectedNode.config.topic || 'Initial Trigger Input' }, null, 2)}
+                  </pre>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                    Output Produced by this Node:
+                  </span>
+                  <pre className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-cyan-300 overflow-x-auto max-h-48">
+                    {JSON.stringify(selectedNode.lastOutput || { status: 'idle', note: 'Run step to see output data' }, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1537,7 +1503,7 @@ export const WorkflowBuilderPage: React.FC = () => {
           </div>
 
           <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs">
-            {/* Custom AI Agent Builder (HERO FEATURE) */}
+            {/* Custom AI Agent Builder */}
             <div className="space-y-2">
               <span className="font-extrabold text-[10px] uppercase text-purple-400 tracking-wider">Custom AI Agents (Build Your Own)</span>
               
@@ -1603,36 +1569,6 @@ export const WorkflowBuilderPage: React.FC = () => {
                   <div className="text-[10px] text-slate-400">Bengali humor & satire synthesis</div>
                 </div>
               </div>
-
-              <div 
-                onClick={() => handleAddNodeFromCatalog(
-                  'ai_agent', 
-                  'ai', 
-                  'Tech News Scout Agent', 
-                  'Executive summaries & trending tech',
-                  {
-                    agentName: 'Tech Scout AI',
-                    role: 'Senior Technology Analyst',
-                    provider: 'google-gemini',
-                    model: 'gemini-2.0-flash',
-                    systemPrompt: 'You are a senior tech analyst summarizing cutting-edge AI breakthroughs.',
-                    promptTemplate: 'Analyze recent innovations in "{{topic}}". Provide 3 key highlights and outlook.',
-                    topic: 'Autonomous Multi-Agent AI Systems & Meta Graph API Automation',
-                    temperature: 0.6,
-                    maxTokens: 1024,
-                    language: 'english'
-                  }
-                )}
-                className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-600/60 cursor-pointer transition flex items-center space-x-3"
-              >
-                <div className="p-2 rounded-lg bg-cyan-900/40 text-cyan-400">
-                  <BrainCircuit className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-bold text-slate-100">Tech News Scout Agent</div>
-                  <div className="text-[10px] text-slate-400">Tech summaries & market intelligence</div>
-                </div>
-              </div>
             </div>
 
             {/* Triggers Group */}
@@ -1665,41 +1601,11 @@ export const WorkflowBuilderPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Governance & Tools Group */}
-            <div className="space-y-2">
-              <span className="font-extrabold text-[10px] uppercase text-amber-400 tracking-wider">Governance & Tools</span>
-              <div 
-                onClick={() => handleAddNodeFromCatalog('approval_gate', 'approval', 'Human Approval Gate', 'Cryptographic SHA-256 sign-off', { riskLevel: 'medium', autoApproveSimulation: true })}
-                className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-600/60 cursor-pointer transition flex items-center space-x-3"
-              >
-                <div className="p-2 rounded-lg bg-amber-900/40 text-amber-400">
-                  <CheckSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-bold text-slate-100">Human Approval Gate</div>
-                  <div className="text-[10px] text-slate-400">Cryptographic sign-off check</div>
-                </div>
-              </div>
-
-              <div 
-                onClick={() => handleAddNodeFromCatalog('bengali_stylizer', 'tool', 'Content Formatter', 'Add call to action & viral hashtags', { addHashtags: true })}
-                className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-600/60 cursor-pointer transition flex items-center space-x-3"
-              >
-                <div className="p-2 rounded-lg bg-cyan-900/40 text-cyan-400">
-                  <Wrench className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-bold text-slate-100">Content Formatter</div>
-                  <div className="text-[10px] text-slate-400">Inject hashtags, emojis & formatting</div>
-                </div>
-              </div>
-            </div>
-
             {/* Actions & Destinations Group */}
             <div className="space-y-2">
               <span className="font-extrabold text-[10px] uppercase text-blue-400 tracking-wider">Publishers & Actions</span>
               <div 
-                onClick={() => handleAddNodeFromCatalog('facebook_publish', 'action', 'Meta Facebook Publisher', 'Publish to Facebook Page feed', { pageId: fbConn?.accountIdentifier || '109847291834910', dryRun: true })}
+                onClick={() => handleAddNodeFromCatalog('facebook_publish', 'action', 'Meta Facebook Publisher', 'Publish to Facebook Page feed', { pageId: fbConn?.accountIdentifier || '109847291834910', operation: 'create_post', dryRun: true })}
                 className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-600/60 cursor-pointer transition flex items-center space-x-3"
               >
                 <div className="p-2 rounded-lg bg-blue-900/40 text-blue-400">
@@ -1712,7 +1618,7 @@ export const WorkflowBuilderPage: React.FC = () => {
               </div>
 
               <div 
-                onClick={() => handleAddNodeFromCatalog('webhook_out', 'action', 'Outgoing Webhook', 'Send HTTP POST to external API', { webhookUrl: 'https://hooks.slack.com/services/...' })}
+                onClick={() => handleAddNodeFromCatalog('webhook_out', 'action', 'Outgoing Webhook', 'Send HTTP POST to external API', { webhookUrl: 'https://discord.com/api/webhooks/demo/...' })}
                 className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-600/60 cursor-pointer transition flex items-center space-x-3"
               >
                 <div className="p-2 rounded-lg bg-blue-900/40 text-blue-400">

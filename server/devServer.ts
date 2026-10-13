@@ -56,6 +56,9 @@ import handleFacebookExchangeToken from '../api/integrations/facebook/exchange-t
 import handleFacebookPages from '../api/integrations/facebook/pages.ts';
 import handleFacebookReplyComment from '../api/integrations/facebook/reply-comment.ts';
 import handleFacebookFeedAnalytics from '../api/integrations/facebook/feed-analytics.ts';
+import handleWorkflowManage from '../api/workflows/manage.ts';
+import handleKnowledgeIngest from '../api/knowledge/ingest.ts';
+import handleNotificationDispatch from '../api/notifications/dispatch.ts';
 import { BackgroundCronScheduler } from './scheduler.ts';
 
 const PORT = process.env.API_PORT || 3001;
@@ -203,6 +206,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/integrations/facebook/feed-analytics') {
       return await handleFacebookFeedAnalytics(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/workflows/manage') {
+      return await handleWorkflowManage(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/knowledge/ingest') {
+      return await handleKnowledgeIngest(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/notifications/dispatch') {
+      return await handleNotificationDispatch(reqAdapter, resAdapter);
     }
 
     // 404 Fallback
