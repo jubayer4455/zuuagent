@@ -41,28 +41,49 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       return { success: false, latencyMs: 0, message: 'Provider not found' };
     }
 
-    const start = Date.now();
-    await new Promise(resolve => setTimeout(resolve, 450)); // Network test simulation
-    const latency = Date.now() - start;
+    try {
+      const res = await fetch('http://localhost:3001/api/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerSlug: provider.slug })
+      });
 
-    if (provider.slug === 'ollama' && !provider.hasStoredKey) {
-      return {
-        success: false,
-        latencyMs: latency,
-        message: 'Could not connect to localhost:11434. Verify Ollama service is running locally.'
-      };
-    }
+      if (res.ok) {
+        const data = await res.json();
+        const isHealthy = data.status === 'verified_live';
+        const isDegraded = data.status === 'missing_credentials' || data.status === 'simulated_ready';
 
+        set(state => ({
+          providers: state.providers.map(p => 
+            p.id === id ? { 
+              ...p, 
+              healthStatus: isHealthy ? 'healthy' : isDegraded ? 'degraded' : 'offline',
+              lastHealthCheck: new Date().toISOString(),
+              lastError: isHealthy ? undefined : data.message
+            } : p
+          )
+        }));
+
+        return {
+          success: isHealthy,
+          latencyMs: data.latencyMs || 40,
+          message: data.message
+        };
+      }
+    } catch (_) {}
+
+    // Fallback simulation
+    const latency = 120;
     set(state => ({
       providers: state.providers.map(p => 
-        p.id === id ? { ...p, healthStatus: 'healthy', lastHealthCheck: new Date().toISOString(), lastError: undefined } : p
+        p.id === id ? { ...p, healthStatus: 'degraded', lastHealthCheck: new Date().toISOString(), lastError: 'Server-side endpoint unreachable. Operating in fallback simulation mode.' } : p
       )
     }));
 
     return {
-      success: true,
+      success: false,
       latencyMs: latency,
-      message: `Connection to ${provider.name} verified successfully (${latency}ms).`
+      message: `${provider.name}: Server-side check offline. Fallback simulation available.`
     };
   },
 

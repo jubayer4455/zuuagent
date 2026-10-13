@@ -29,19 +29,38 @@ interface WorkflowNode {
   config: Record<string, any>;
 }
 
+const LOCAL_STORAGE_WORKFLOW_KEY = 'zuu_active_workflow_nodes_v2';
+
+const DEFAULT_NODES: WorkflowNode[] = [
+  { id: 'n1', type: 'trigger', title: 'Schedule Trigger (2:00 PM Daily)', description: 'Cron activation Asia/Dhaka timezone', config: { cron: '0 14 * * *' } },
+  { id: 'n2', type: 'memory', title: 'Scoped Memory Retrieval', description: 'Load Trollogiya persona and approved hashtags', config: { scope: 'isolated' } },
+  { id: 'n3', type: 'llm', title: 'AI Generation (Gemini 2.0 Flash)', description: 'Synthesize Bengali humor and witty narrative', config: { temp: 0.85 } },
+  { id: 'n4', type: 'tool', title: 'Bengali Stylizer Tool', description: 'Validate punchlines & inject signature hashtags', config: { humor: 8 } },
+  { id: 'n5', type: 'approval', title: 'Human Approval Gate', description: 'Pause execution for Administrator review', config: { risk: 'medium' } },
+  { id: 'n6', type: 'publish', title: 'Meta Facebook Page Publish', description: 'Execute Graph API post with idempotency protection', config: { pageId: '109847291834910' } }
+];
+
 export const WorkflowBuilderPage: React.FC = () => {
   const { agents } = useAgentStore();
 
-  const [nodes, setNodes] = useState<WorkflowNode[]>([
-    { id: 'n1', type: 'trigger', title: 'Schedule Trigger (2:00 PM Daily)', description: 'Cron activation Asia/Dhaka timezone', config: { cron: '0 14 * * *' } },
-    { id: 'n2', type: 'memory', title: 'Scoped Memory Retrieval', description: 'Load Trollogiya persona and approved hashtags', config: { scope: 'isolated' } },
-    { id: 'n3', type: 'llm', title: 'AI Generation (Gemini 2.0 Flash)', description: 'Synthesize Bengali humor and witty narrative', config: { temp: 0.85 } },
-    { id: 'n4', type: 'tool', title: 'Bengali Stylizer Tool', description: 'Validate punchlines & inject signature hashtags', config: { humor: 8 } },
-    { id: 'n5', type: 'approval', title: 'Human Approval Gate', description: 'Pause execution for Administrator review', config: { risk: 'medium' } },
-    { id: 'n6', type: 'publish', title: 'Meta Facebook Page Publish', description: 'Execute Graph API post with idempotency protection', config: { pageId: '109847291834910' } }
-  ]);
+  const [nodes, setNodes] = useState<WorkflowNode[]>(() => {
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_WORKFLOW_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_NODES;
+  });
 
-  const [activeNode, setActiveNode] = useState<WorkflowNode | null>(nodes[0]);
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_WORKFLOW_KEY, JSON.stringify(nodes));
+    } catch (_) {}
+  }, [nodes]);
+
+  const [activeNode, setActiveNode] = useState<WorkflowNode | null>(nodes[0] || null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeSimulationIndex, setActiveSimulationIndex] = useState<number | null>(null);
 

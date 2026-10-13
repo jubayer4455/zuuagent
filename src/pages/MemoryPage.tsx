@@ -15,7 +15,7 @@ import { useAgentStore } from '../store/useAgentStore';
 import { MemoryCategory } from '../types';
 
 export const MemoryPage: React.FC = () => {
-  const { memories, addMemory, deleteMemory, togglePinMemory } = useMemoryStore();
+  const { memories, addMemory, deleteMemory, togglePinMemory, exportMemories } = useMemoryStore();
   const { agents } = useAgentStore();
 
   const [search, setSearch] = useState('');
@@ -56,6 +56,17 @@ export const MemoryPage: React.FC = () => {
     setNewContent('');
   };
 
+  const handleExport = () => {
+    const json = exportMemories();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zuu-agent-memories-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const categories: { id: MemoryCategory; label: string }[] = [
     { id: 'identity', label: 'Identity & Purpose' },
     { id: 'instruction', label: 'Admin Instructions' },
@@ -81,13 +92,24 @@ export const MemoryPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold shadow-lg shadow-cyan-950 transition self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Memory Record</span>
-        </button>
+        <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+          <button
+            onClick={handleExport}
+            className="flex items-center space-x-1.5 px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition"
+            title="Export all memory partitions to JSON"
+          >
+            <Download className="w-4 h-4 text-cyan-400" />
+            <span>Export (JSON)</span>
+          </button>
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold shadow-lg shadow-cyan-950 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Memory Record</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
