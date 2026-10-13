@@ -43,6 +43,7 @@ import handleMetaPublish from '../api/integrations/meta-publish.ts';
 import handleMetaWebhook from '../api/webhooks/meta-facebook.ts';
 import handleCronWorker from '../api/schedules/cron-worker.ts';
 import handleProviderTest from '../api/providers/test.ts';
+import handleFacebookDiagnostics from '../api/integrations/facebook/diagnostics.ts';
 
 const PORT = process.env.API_PORT || 3001;
 
@@ -149,6 +150,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/providers/test') {
       return await handleProviderTest(reqAdapter, resAdapter);
+    }
+    if (pathname === '/api/integrations/facebook/diagnostics') {
+      return await handleFacebookDiagnostics(reqAdapter, resAdapter);
     }
 
     // 404 Fallback

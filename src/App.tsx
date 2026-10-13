@@ -11,6 +11,7 @@ import { TasksPage } from './pages/TasksPage';
 import { WorkflowBuilderPage } from './pages/WorkflowBuilderPage';
 import { SchedulesPage } from './pages/SchedulesPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
+import { ContentCalendarPage } from './pages/ContentCalendarPage';
 import { ProvidersPage } from './pages/ProvidersPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { ToolRegistryPage } from './pages/ToolRegistryPage';
@@ -43,6 +44,7 @@ export const App: React.FC = () => {
           <Route path="workflows" element={<WorkflowBuilderPage />} />
           <Route path="schedules" element={<SchedulesPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
+          <Route path="content-calendar" element={<ContentCalendarPage />} />
           <Route path="providers" element={<ProvidersPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="tools" element={<ToolRegistryPage />} />

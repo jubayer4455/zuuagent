@@ -16,6 +16,7 @@ import {
   Wrench, 
   Clock, 
   CheckSquare, 
+  Calendar, 
   Bell, 
   BarChart3, 
   FileText, 
@@ -95,6 +96,12 @@ export const AppLayout: React.FC = () => {
           icon: CheckSquare, 
           permission: 'approvals.decide',
           badge: () => pendingApprovalsCount > 0 ? pendingApprovalsCount : null 
+        },
+        { 
+          id: 'content-calendar', 
+          name: 'Content Calendar & Studio', 
+          path: '/content-calendar', 
+          icon: Calendar 
         }
       ]
     },
