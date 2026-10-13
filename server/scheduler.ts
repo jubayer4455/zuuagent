@@ -4,7 +4,7 @@
 // patterns and triggering workflow runs in the background.
 // ==============================================================================
 
-import handleWorkflowRun from '../api/workflows/run';
+import handleWorkflowRun from '../api/workflows/run.ts';
 
 export interface ScheduledTask {
   id: string;

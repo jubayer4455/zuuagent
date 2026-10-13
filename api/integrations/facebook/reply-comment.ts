@@ -5,7 +5,7 @@
 // and publishes it back to the comment thread via Meta Graph API v21.0.
 // ==============================================================================
 
-import { AIProviderService } from '../../../src/services/ai/aiProviderAdapters';
+import { AIProviderService } from '../../../src/services/ai/aiProviderAdapters.ts';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
