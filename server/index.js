@@ -63,10 +63,41 @@ function getSession(req) {
   return { userId: 'jubayer', userName: 'JUBAYER', companyName: 'HAZI TRADERS', branchName: 'HAZI TRADERS', permissionType: 'A' };
 }
 
+function parseUserPermissions(user) {
+  if (!user) {
+    return {
+      all: true,
+      roleLabel: 'Super Admin (Full Power)',
+      actions: { create: true, edit: true, delete: true, print: true, manageAdmins: true, manageShops: true },
+      routes: ['*']
+    };
+  }
+  if (user.permissions_json) {
+    try {
+      const parsed = JSON.parse(user.permissions_json);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {}
+  }
+  if (user.permission_type === 'A') {
+    return {
+      all: true,
+      roleLabel: 'Super Admin (Full Power)',
+      actions: { create: true, edit: true, delete: true, print: true, manageAdmins: true, manageShops: true },
+      routes: ['*']
+    };
+  }
+  return {
+    all: false,
+    roleLabel: 'Sales & Billing Admin',
+    actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+    routes: ['/GI/SALES.aspx', '/GI/PRICEQUOTATION.aspx', '/GI/SERIAL_SEARCH.aspx', '/GI/MOBILE_SEARCH.aspx', '/GI/DATE_WISE_BILL_SEARCH.aspx']
+  };
+}
+
 // ==================== AUTH ====================
 app.get('/api/auth/options', (req, res) => {
   const companies = db.prepare(`SELECT * FROM companies`).all();
-  const branches = db.prepare(`SELECT * FROM branches`).all();
+  const branches = db.prepare(`SELECT * FROM branches ORDER BY branch_id`).all();
   const stores = db.prepare(`SELECT * FROM stores`).all();
   res.json({ companies, branches, stores });
 });
@@ -77,27 +108,51 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ ok: false, message: 'Please enter User ID and Password!' });
   }
   const user = db.prepare(
-    `SELECT * FROM users WHERE LOWER(user_id) = LOWER(?) AND password = ? AND active = 'Y'`
-  ).get(String(userId).trim(), String(password).trim());
+    `SELECT * FROM users WHERE (LOWER(user_id) = LOWER(?) OR LOWER(user_name) = LOWER(?)) AND password = ? AND active = 'Y'`
+  ).get(String(userId).trim(), String(userId).trim(), String(password).trim());
 
   if (!user) {
     return res.status(401).json({ ok: false, message: 'Invalid User ID or Password!' });
   }
 
+  const permissions = parseUserPermissions(user);
   const token = `sess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const sessionData = {
     token,
     userId: user.user_id,
     userName: user.user_name.toUpperCase(),
     companyName: companyName || 'HAZI TRADERS',
-    branchName: branchName || 'HAZI TRADERS',
-    permissionType: user.permission_type
+    branchName: branchName || user.operate_company || 'HAZI TRADERS',
+    permissionType: user.permission_type,
+    permissions
   };
   sessions.set(token, sessionData);
   const encoded = Buffer.from(JSON.stringify(sessionData), 'utf8').toString('base64url');
   res.cookie('hazi_session', token, { httpOnly: false, path: '/', maxAge: 7 * 24 * 3600 * 1000 });
   res.cookie('hazi_session_data', encoded, { httpOnly: false, path: '/', maxAge: 7 * 24 * 3600 * 1000 });
   res.json({ ok: true, session: sessionData });
+});
+
+app.post('/api/auth/switch-user', (req, res) => {
+  const { targetUserId, branchName } = req.body;
+  const user = db.prepare(`SELECT * FROM users WHERE LOWER(user_id) = LOWER(?)`).get(String(targetUserId || '').trim());
+  if (!user) return res.status(404).json({ ok: false, message: 'Admin/User not found!' });
+  const permissions = parseUserPermissions(user);
+  const token = `sess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const sessionData = {
+    token,
+    userId: user.user_id,
+    userName: user.user_name.toUpperCase(),
+    companyName: 'HAZI TRADERS',
+    branchName: branchName || user.operate_company || 'HAZI TRADERS',
+    permissionType: user.permission_type,
+    permissions
+  };
+  sessions.set(token, sessionData);
+  const encoded = Buffer.from(JSON.stringify(sessionData), 'utf8').toString('base64url');
+  res.cookie('hazi_session', token, { httpOnly: false, path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+  res.cookie('hazi_session_data', encoded, { httpOnly: false, path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+  res.json({ ok: true, session: sessionData, message: `Switched active account to ${user.user_name} (${permissions.roleLabel || 'Custom Power'})` });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -151,7 +206,10 @@ app.get('/api/master/all', (req, res) => {
   const bankAccounts = db.prepare(`SELECT * FROM bank_accounts ORDER BY bk_br_id`).all();
   const chequeBooks = db.prepare(`SELECT * FROM cheque_books ORDER BY id DESC`).all();
   const employees = db.prepare(`SELECT * FROM employees ORDER BY employee_id`).all();
-  const users = db.prepare(`SELECT user_id, user_name, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active FROM users ORDER BY user_name`).all();
+  const users = db.prepare(`SELECT user_id, user_name, password, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active, permissions_json FROM users ORDER BY user_name`).all().map(u => ({
+    ...u,
+    permissions: parseUserPermissions(u)
+  }));
   const serviceGroups = db.prepare(`SELECT * FROM service_groups ORDER BY service_group_id`).all();
   const problemGroups = db.prepare(`SELECT * FROM problem_groups ORDER BY problem_group_id`).all();
   const services = db.prepare(`SELECT * FROM services ORDER BY service_id`).all();
@@ -486,33 +544,107 @@ app.post('/api/setup/cheque-book', (req, res) => {
   res.json({ ok: true, created, message: `${created} Cheque leaf/leaves registered successfully.` });
 });
 
-// ==================== ADMIN & HRM CRUD ====================
+// ==================== ADMIN & HRM CRUD (USERS, PERMISSIONS, SHOPS) ====================
+app.post('/api/admin/shops', (req, res) => {
+  const {
+    action = 'save',
+    branch_id,
+    company_id = 'CMP001',
+    branch_name,
+    address = 'Dhaka, Bangladesh',
+    phone = '01818524712',
+    email = 'info@hazierp.top',
+    manager_name = 'JUBAYER AHMED',
+    status = 'ACTIVE'
+  } = req.body;
+
+  if (action === 'delete') {
+    if (branch_name === 'HAZI TRADERS' || branch_id === 'BR001') {
+      return res.status(400).json({ ok: false, message: 'Primary Headquarters Shop (HAZI TRADERS) cannot be removed.' });
+    }
+    db.prepare(`DELETE FROM branches WHERE branch_id = ? OR branch_name = ?`).run(branch_id, branch_name);
+    return res.json({ ok: true, message: `Shop "${branch_name}" removed successfully.` });
+  }
+
+  if (!branch_name || !String(branch_name).trim()) {
+    return res.status(400).json({ ok: false, message: 'Please enter Shop / Branch Name.' });
+  }
+  const cleanName = String(branch_name).trim().toUpperCase();
+  const existing = db.prepare(`SELECT * FROM branches WHERE branch_id = ? OR UPPER(branch_name) = ?`).get(branch_id, cleanName);
+  const id = existing ? existing.branch_id : nextId('branches', 'branch_id', 'BR', 3);
+
+  db.prepare(`
+    INSERT OR REPLACE INTO branches (branch_id, company_id, branch_name, address, phone, email, manager_name, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, company_id, cleanName, address, phone, email, manager_name, status);
+
+  // Ensure default store exists for new shop
+  const stId = nextId('stores', 'store_id', 'ST', 3);
+  try {
+    db.prepare(`INSERT OR IGNORE INTO stores (store_id, store_name, branch_name) VALUES (?, ?, ?)`).run(stId, `${cleanName} SHOWROOM`, cleanName);
+  } catch {}
+
+  res.json({ ok: true, id, branch_name: cleanName, message: `Shop / Branch "${cleanName}" (${id}) opened & saved successfully.` });
+});
+
 app.post('/api/setup/user', (req, res) => {
   const {
     action = 'save', user_id, user_name, father_name = '', mother_name = '',
     address = '', email = '', mobile = '', opt_mobile = '', password = '',
-    new_password = '', permission_type = 'U', operate_company = 'HAZI TRADERS', active = 'Y'
+    new_password = '', permission_type = 'U', operate_company = 'HAZI TRADERS',
+    active = 'Y', permissions = null
   } = req.body;
 
-  if (action === 'change_password') {
-    const targetPass = new_password || password;
-    if (!user_id || !targetPass) return res.status(400).json({ ok: false, message: 'Enter User ID and New Password' });
-    const existing = db.prepare(`SELECT * FROM users WHERE LOWER(user_id) = LOWER(?)`).get(user_id);
-    if (existing) {
-      db.prepare(`UPDATE users SET password = ?, user_name = COALESCE(NULLIF(?, ''), user_name), father_name = ?, mother_name = ?, address = ?, email = ?, mobile = ?, opt_mobile = ?, permission_type = ?, operate_company = ?, active = ? WHERE user_id = ?`)
-        .run(targetPass, user_name, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active, existing.user_id);
-      return res.json({ ok: true, message: `Password & profile updated for ${existing.user_id}.` });
-    }
+  if (!user_id || !String(user_id).trim()) {
+    return res.status(400).json({ ok: false, message: 'Please enter User ID' });
   }
+  const cleanId = String(user_id).trim();
+  const existing = db.prepare(`SELECT * FROM users WHERE LOWER(user_id) = LOWER(?)`).get(cleanId);
+
   if (action === 'delete') {
-    db.prepare(`DELETE FROM users WHERE LOWER(user_id) = LOWER(?)`).run(user_id);
-    return res.json({ ok: true, message: 'User deleted.' });
+    if (cleanId.toLowerCase() === 'jubayer') {
+      return res.status(400).json({ ok: false, message: 'Master Super Admin (jubayer) cannot be deleted!' });
+    }
+    db.prepare(`DELETE FROM users WHERE LOWER(user_id) = LOWER(?)`).run(cleanId);
+    return res.json({ ok: true, message: `Admin / User "${cleanId}" removed permanently.` });
   }
-  db.prepare(`
-    INSERT OR REPLACE INTO users (user_id, user_name, password, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(user_id, (user_name || user_id).toUpperCase(), new_password || password || '555444', father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active);
-  res.json({ ok: true, message: 'User Information saved.' });
+
+  const finalPass = new_password || password || existing?.password || '123456';
+  const finalPermsJson = permissions
+    ? (typeof permissions === 'string' ? permissions : JSON.stringify(permissions))
+    : (existing?.permissions_json || JSON.stringify(parseUserPermissions({ permission_type })));
+
+  if (action === 'change_password' || action === 'save_permissions' || action === 'save') {
+    const targetId = existing ? existing.user_id : cleanId;
+    db.prepare(`
+      INSERT OR REPLACE INTO users (
+        user_id, user_name, password, father_name, mother_name, address, email,
+        mobile, opt_mobile, permission_type, operate_company, active, permissions_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      targetId,
+      (user_name || existing?.user_name || cleanId).toUpperCase(),
+      finalPass,
+      father_name ?? existing?.father_name ?? '',
+      mother_name ?? existing?.mother_name ?? '',
+      address ?? existing?.address ?? '',
+      email ?? existing?.email ?? '',
+      mobile ?? existing?.mobile ?? '',
+      opt_mobile ?? existing?.opt_mobile ?? '',
+      permission_type || existing?.permission_type || 'U',
+      operate_company || existing?.operate_company || 'HAZI TRADERS',
+      active || existing?.active || 'Y',
+      finalPermsJson
+    );
+    const updatedUser = db.prepare(`SELECT * FROM users WHERE LOWER(user_id) = LOWER(?)`).get(targetId);
+    return res.json({
+      ok: true,
+      user: { ...updatedUser, permissions: parseUserPermissions(updatedUser) },
+      message: action === 'save_permissions'
+        ? `Power & Permissions updated for Admin "${updatedUser.user_name}"!`
+        : `Admin / User "${updatedUser.user_name}" saved successfully.`
+    });
+  }
 });
 
 app.post('/api/setup/employee', (req, res) => {

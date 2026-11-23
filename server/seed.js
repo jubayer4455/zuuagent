@@ -1,8 +1,52 @@
 import { db, adjustStock, logModification } from './db.js';
 
 export function seedDatabase() {
-  const userCount = db.prepare(`SELECT COUNT(*) AS cnt FROM users`).get().cnt;
-  if (userCount > 0) return;
+  // Backfill permissions_json on existing users if empty
+  const existingUsers = db.prepare(`SELECT user_id, user_name, permission_type, permissions_json FROM users`).all();
+  if (existingUsers.length > 0) {
+    const superPerms = JSON.stringify({
+      all: true,
+      roleLabel: 'Super Admin (Full Power)',
+      actions: { create: true, edit: true, delete: true, print: true, manageAdmins: true, manageShops: true },
+      routes: ['*']
+    });
+    for (const u of existingUsers) {
+      if (!u.permissions_json) {
+        if (u.permission_type === 'A' || u.user_id === 'jubayer' || u.user_id === 'admin') {
+          db.prepare(`UPDATE users SET permissions_json = ?, permission_type = 'A' WHERE user_id = ?`).run(superPerms, u.user_id);
+        } else if (u.user_id === 'shawon') {
+          db.prepare(`UPDATE users SET permissions_json = ? WHERE user_id = ?`).run(JSON.stringify({
+            all: false,
+            roleLabel: 'Sales & Billing Admin',
+            actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+            routes: ['/GI/CUSTOMERINFORMATION.aspx', '/GI/PRICEQUOTATION.aspx', '/GI/SALES.aspx', '/GI/SALES_RETURN.aspx', '/GI/SERIAL_SEARCH.aspx', '/GI/MOBILE_SEARCH.aspx', '/GI/DATE_WISE_BILL_SEARCH.aspx', '/GI/SALES_REPORTS.aspx']
+          }), u.user_id);
+        } else if (u.user_id === 'rashed') {
+          db.prepare(`UPDATE users SET permissions_json = ? WHERE user_id = ?`).run(JSON.stringify({
+            all: false,
+            roleLabel: 'RMA & Service Admin',
+            actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+            routes: ['/GI/COMPLAIN_RECEIVE.aspx', '/GI/REPLACE_OUT.aspx', '/GI/REPLACE_IN.aspx', '/GI/REPLACEMENT_DELIVERY.aspx', '/GI/RMA_SERIAL_SEARCH.aspx', '/GI/SERVICEGROUP.aspx', '/GI/PROBLEMGROUP.aspx', '/GI/SERVICE.aspx', '/GI/PROBLEM.aspx', '/GI/SERVICEBILL.aspx', '/GI/RMA_REPORTS.aspx']
+          }), u.user_id);
+        } else if (u.user_id === 'bashiruddin') {
+          db.prepare(`UPDATE users SET permissions_json = ? WHERE user_id = ?`).run(JSON.stringify({
+            all: false,
+            roleLabel: 'Branch / Shop Manager',
+            actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+            routes: ['/GI/CSGROUP.aspx', '/GI/CUSTOMERINFORMATION.aspx', '/GI/PRODUCTINFORMATION.aspx', '/GI/PRICE_SETUP.aspx', '/GI/DAILY_BUSINESS.aspx', '/GI/PURCHASE.aspx', '/GI/PRICEQUOTATION.aspx', '/GI/SALES.aspx', '/GI/SERIAL_SEARCH.aspx', '/GI/MOBILE_SEARCH.aspx', '/GI/DATE_WISE_BILL_SEARCH.aspx', '/GI/STOCK_TR_COMM_TO_COMM.aspx', '/GI/STOCK_TR_BR_TO_BR.aspx', '/GI/STOCK_RECEIVED_BR_TO_BR_TR.aspx', '/GI/PAYMENT.aspx', '/GI/COLLECTIONS.aspx', '/GI/PURCHASE_REPORTS.aspx', '/GI/SALES_REPORTS.aspx', '/GI/STOCK_REPORTS.aspx']
+          }), u.user_id);
+        } else {
+          db.prepare(`UPDATE users SET permissions_json = ? WHERE user_id = ?`).run(JSON.stringify({
+            all: false,
+            roleLabel: 'Accounts & Cashier Admin',
+            actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+            routes: ['/GI/PAYMENT.aspx', '/GI/COLLECTIONS.aspx', '/GI/BANKTRANSCATION.aspx', '/GI/JOURNAL.aspx', '/GI/CHEQUE_SEARCH.aspx', '/GI/DATE_WISE_COLLECTION_SEARCH.aspx', '/GI/ACCOUNTS_REPORTS.aspx']
+          }), u.user_id);
+        }
+      }
+    }
+    return;
+  }
 
   // 1. Companies, Branches, Stores
   db.prepare(`INSERT INTO companies (company_id, company_name) VALUES ('CMP001', 'HAZI TRADERS')`).run();
@@ -12,16 +56,74 @@ export function seedDatabase() {
   db.prepare(`INSERT INTO stores (store_id, store_name, branch_name) VALUES ('ST001', 'SHOW ROOM', 'HAZI TRADERS')`).run();
   db.prepare(`INSERT INTO stores (store_id, store_name, branch_name) VALUES ('ST002', 'MAIN GODOWN', 'HAZI TRADERS')`).run();
 
-  // 2. Users (matching hazierp.top users list)
+  // 2. Users (matching hazierp.top users list + custom granular admin powers)
   const insertUser = db.prepare(`
-    INSERT INTO users (user_id, user_name, password, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Y')
+    INSERT INTO users (user_id, user_name, password, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active, permissions_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Y', ?)
   `);
-  insertUser.run('jubayer', 'JUBAYER', '555444', 'Md. Abdul Karim', 'Fatema Begum', 'Dhaka, Bangladesh', 'jubayer@hazierp.top', '01818524712', '01402338209', 'A', 'HAZI TRADERS');
-  insertUser.run('admin', 'ADMINISTRATOR', '555444', 'Hazi M. Rahman', 'Amena Khatun', 'Dhaka', 'admin@hazierp.top', '01818524712', '', 'A', 'HAZI TRADERS');
+  const superAdminPerms = JSON.stringify({
+    all: true,
+    roleLabel: 'Super Admin (Full Power)',
+    actions: { create: true, edit: true, delete: true, print: true, manageAdmins: true, manageShops: true },
+    routes: ['*']
+  });
+  insertUser.run('jubayer', 'JUBAYER', '555444', 'Md. Abdul Karim', 'Fatema Begum', 'Dhaka, Bangladesh', 'jubayer@hazierp.top', '01818524712', '01402338209', 'A', 'HAZI TRADERS', superAdminPerms);
+  insertUser.run('admin', 'ADMINISTRATOR', '555444', 'Hazi M. Rahman', 'Amena Khatun', 'Dhaka', 'admin@hazierp.top', '01818524712', '', 'A', 'HAZI TRADERS', superAdminPerms);
+
+  const presetMap = {
+    'BASHIR UDDIN': {
+      all: false,
+      roleLabel: 'Branch / Shop Manager',
+      actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+      routes: [
+        '/GI/CSGROUP.aspx', '/GI/CUSTOMERINFORMATION.aspx', '/GI/PRODUCTINFORMATION.aspx', '/GI/PRICE_SETUP.aspx',
+        '/GI/DAILY_BUSINESS.aspx', '/GI/PURCHASE.aspx', '/GI/PRICEQUOTATION.aspx', '/GI/SALES.aspx',
+        '/GI/SERIAL_SEARCH.aspx', '/GI/MOBILE_SEARCH.aspx', '/GI/DATE_WISE_BILL_SEARCH.aspx',
+        '/GI/STOCK_TR_COMM_TO_COMM.aspx', '/GI/STOCK_TR_BR_TO_BR.aspx', '/GI/STOCK_RECEIVED_BR_TO_BR_TR.aspx',
+        '/GI/PAYMENT.aspx', '/GI/COLLECTIONS.aspx', '/GI/PURCHASE_REPORTS.aspx', '/GI/SALES_REPORTS.aspx', '/GI/STOCK_REPORTS.aspx'
+      ]
+    },
+    'SHAWON': {
+      all: false,
+      roleLabel: 'Sales & Billing Admin',
+      actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+      routes: [
+        '/GI/CUSTOMERINFORMATION.aspx', '/GI/PRICEQUOTATION.aspx', '/GI/SALES.aspx', '/GI/SALES_RETURN.aspx',
+        '/GI/SERIAL_SEARCH.aspx', '/GI/MOBILE_SEARCH.aspx', '/GI/DATE_WISE_BILL_SEARCH.aspx', '/GI/SALES_REPORTS.aspx'
+      ]
+    },
+    'RASHED': {
+      all: false,
+      roleLabel: 'RMA & Service Admin',
+      actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+      routes: [
+        '/GI/COMPLAIN_RECEIVE.aspx', '/GI/REPLACE_OUT.aspx', '/GI/REPLACE_IN.aspx', '/GI/REPLACEMENT_DELIVERY.aspx',
+        '/GI/RMA_SERIAL_SEARCH.aspx', '/GI/SERVICEGROUP.aspx', '/GI/PROBLEMGROUP.aspx', '/GI/SERVICE.aspx',
+        '/GI/PROBLEM.aspx', '/GI/SERVICEBILL.aspx', '/GI/RMA_REPORTS.aspx'
+      ]
+    },
+    'BABU': {
+      all: false,
+      roleLabel: 'Accounts & Cashier Admin',
+      actions: { create: true, edit: true, delete: false, print: true, manageAdmins: false, manageShops: false },
+      routes: [
+        '/GI/ACCOUNTSUBSGROUP.aspx', '/GI/ACCOUNTSLEDGER.aspx', '/GI/BANK.aspx', '/GI/BANKBRANCH.aspx',
+        '/GI/CHQUE_ENTRY.aspx', '/GI/PAYMENT.aspx', '/GI/COLLECTIONS.aspx', '/GI/BANKTRANSCATION.aspx',
+        '/GI/JOURNAL.aspx', '/GI/CHEQUE_SEARCH.aspx', '/GI/DATE_WISE_COLLECTION_SEARCH.aspx',
+        '/GI/SALARY_PROCESS.aspx', '/GI/BALANCETRANSFER.aspx', '/GI/ACCOUNTS_REPORTS.aspx', '/GI/BANK_REPORTS.aspx'
+      ]
+    }
+  };
+
   const staffUsers = ['BABU', 'BASHIR UDDIN', 'JABER', 'JAHANGIR', 'JAHID', 'RASHED', 'ROBIN', 'SHAWON', 'SHEHAB'];
   for (const u of staffUsers) {
-    insertUser.run(u.toLowerCase().replace(/\s+/g, ''), u, '123456', '', '', 'Dhaka', '', '01700000000', '', 'U', 'HAZI TRADERS');
+    const pJson = JSON.stringify(presetMap[u] || {
+      all: false,
+      roleLabel: 'Sales & Billing Admin',
+      actions: { create: true, edit: false, delete: false, print: true, manageAdmins: false, manageShops: false },
+      routes: ['/GI/SALES.aspx', '/GI/PRICEQUOTATION.aspx', '/GI/SERIAL_SEARCH.aspx', '/GI/DATE_WISE_BILL_SEARCH.aspx']
+    });
+    insertUser.run(u.toLowerCase().replace(/\s+/g, ''), u, '123456', '', '', 'Dhaka', `${u.toLowerCase().replace(/\s+/g, '')}@hazierp.top`, '01700000000', '', 'U', 'HAZI TRADERS', pJson);
   }
 
   // 3. Employees (HRM)

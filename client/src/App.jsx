@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { ErpProvider, useErp } from './context/ErpContext.jsx';
 import Layout from './components/Layout.jsx';
 import { LoginPage, TreeDashboardPage } from './pages/LoginPage.jsx';
@@ -34,11 +34,36 @@ import {
 } from './pages/ReportsPages.jsx';
 
 function ProtectedRoute({ children }) {
-  const { session } = useErp();
+  const { session, hasRouteAccess, switchAccount } = useErp();
+  const location = useLocation();
   if (!session) {
     return <Navigate to="/LOGIN.aspx" replace />;
   }
-  return <Layout>{children}</Layout>;
+  const allowed = hasRouteAccess(location.pathname);
+  return (
+    <Layout>
+      {allowed ? (
+        children
+      ) : (
+        <div className="erp-container erp-container-narrow">
+          <div className="erp-fieldset text-center py-5">
+            <h4 className="fw-bold text-danger mb-2">Access Restricted for Admin ID: {session.userName}</h4>
+            <p className="text-muted mb-3">
+              The module <code>{location.pathname}</code> is not enabled in your current Admin Power allocation ({session.permissions?.roleLabel || 'Custom Admin'}).
+            </p>
+            <div className="d-flex justify-content-center gap-2">
+              <Link to="/GI/TREE.aspx" className="erp-btn text-decoration-none">
+                Go to Permitted Dashboard Options
+              </Link>
+              <button type="button" id="SAVE" className="erp-btn" onClick={() => switchAccount('jubayer')}>
+                Switch to Master Super Admin (JUBAYER)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
 }
 
 export default function App() {

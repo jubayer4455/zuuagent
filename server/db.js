@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -18,9 +17,44 @@ export const BACKUP_DIR = backupDir;
 export const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zlotgghqdfrbxeuinjjy.supabase.co';
 export const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsb3RnZ2hxZGZyYnhldWluamp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4MDQzMTUsImV4cCI6MjEwNzM4MDMxNX0.-5C5gZzyi595pPdR6SB7eWb2lcchAz2qmXWnNHWaRBg';
 
-export const db = new DatabaseSync(DB_PATH);
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = OFF;');
+let dbInstance;
+try {
+  const sqliteMod = await import('node:sqlite');
+  dbInstance = new sqliteMod.DatabaseSync(DB_PATH);
+  dbInstance.exec('PRAGMA journal_mode = WAL;');
+  dbInstance.exec('PRAGMA foreign_keys = OFF;');
+} catch {
+  const initSqlJs = (await import('sql.js')).default;
+  const SQL = await initSqlJs();
+  const rawDb = fs.existsSync(DB_PATH) ? new SQL.Database(fs.readFileSync(DB_PATH)) : new SQL.Database();
+  dbInstance = {
+    exec(sql) {
+      rawDb.run(sql);
+    },
+    prepare(sql) {
+      return {
+        all(...params) {
+          const stmt = rawDb.prepare(sql);
+          stmt.bind(params);
+          const rows = [];
+          while (stmt.step()) rows.push(stmt.getAsObject());
+          stmt.free();
+          return rows;
+        },
+        get(...params) {
+          const rows = this.all(...params);
+          return rows[0] || undefined;
+        },
+        run(...params) {
+          rawDb.run(sql, params);
+          return { changes: 1 };
+        }
+      };
+    }
+  };
+}
+
+export const db = dbInstance;
 
 export function initDatabase() {
   db.exec(`
@@ -35,7 +69,9 @@ export function initDatabase() {
       branch_name TEXT NOT NULL,
       address TEXT DEFAULT 'DHAKA',
       phone TEXT DEFAULT '01818524712, 01402338209',
-      email TEXT DEFAULT 'info@hazierp.top'
+      email TEXT DEFAULT 'info@hazierp.top',
+      manager_name TEXT DEFAULT 'JUBAYER AHMED',
+      status TEXT DEFAULT 'ACTIVE'
     );
 
     CREATE TABLE IF NOT EXISTS stores (
@@ -57,6 +93,7 @@ export function initDatabase() {
       permission_type TEXT DEFAULT 'A',
       operate_company TEXT DEFAULT 'HAZI TRADERS',
       active TEXT DEFAULT 'Y',
+      permissions_json TEXT DEFAULT '',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -843,6 +880,10 @@ export function initDatabase() {
       user_name TEXT DEFAULT 'JUBAYER'
     );
   `);
+
+  try { db.exec(`ALTER TABLE users ADD COLUMN permissions_json TEXT DEFAULT '';`); } catch {}
+  try { db.exec(`ALTER TABLE branches ADD COLUMN manager_name TEXT DEFAULT 'JUBAYER AHMED';`); } catch {}
+  try { db.exec(`ALTER TABLE branches ADD COLUMN status TEXT DEFAULT 'ACTIVE';`); } catch {}
 }
 
 export function nextId(table, col, prefix, padLen = 3) {
