@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "HAZI TRADERS Enterprise Resource Planning (WebMaster ERP)",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev:server": "node server/index.js",
     "dev:client": "vite",
