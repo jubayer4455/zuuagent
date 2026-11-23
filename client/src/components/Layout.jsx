@@ -30,7 +30,7 @@ export const MENU_TREE = [
   {
     label: 'Admin Tools',
     items: [
-      { label: 'Admin, Power & Shop Control', path: '/GI/USERENTRY.aspx' },
+      { label: 'User Information', path: '/GI/USERENTRY.aspx' },
       { label: 'Data Backup', path: '/GI/DATABASEBACKUP.aspx' },
       { label: 'Daily Business', path: '/GI/DAILY_BUSINESS.aspx' }
     ]
@@ -116,7 +116,7 @@ export const MENU_TREE = [
 export const ALL_ROUTES_COUNT = MENU_TREE.reduce((acc, m) => acc + m.items.length, 0);
 
 export default function Layout({ children }) {
-  const { session, logout, toast, master, hasRouteAccess, isSuperAdmin, switchShop, switchAccount } = useErp();
+  const { session, logout, toast, hasRouteAccess, switchAccount } = useErp();
   const [openIdx, setOpenIdx] = useState(null);
   const navRef = useRef(null);
   const navigate = useNavigate();
@@ -141,143 +141,40 @@ export default function Layout({ children }) {
     navigate('/LOGIN.aspx');
   };
 
-  // Filter menu items dynamically based on logged-in admin's assigned powers!
-  const visibleMenus = MENU_TREE.map((mod) => ({
-    ...mod,
-    items: mod.items.filter((sub) => hasRouteAccess(sub.path))
-  })).filter((mod) => mod.items.length > 0);
-
-  const allowedCount = visibleMenus.reduce((acc, m) => acc + m.items.length, 0);
+  // Dynamically filter menu items based on the logged-in user's assigned permissions!
+  const visibleMenus = MENU_TREE.map((m) => ({
+    ...m,
+    items: m.items.filter((sub) => hasRouteAccess(sub.path))
+  })).filter((m) => m.items.length > 0);
 
   return (
     <div id="BBB" className="erp-main-bg">
       <div id="SOFT_HEADER" ref={navRef}>
-        {/* Top Enterprise Status & Control Bar */}
-        <div className="erp-topbar">
-          <div className="d-flex align-items-center gap-3">
-            <Link to="/GI/TREE.aspx" className="erp-brand-badge">
-              <div className="erp-brand-icon">HT</div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: '14.5px', letterSpacing: '0.3px', lineHeight: 1.1 }}>
-                  HAZI TRADERS ERP
-                </div>
-                <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  Enterprise Resource, Inventory &amp; Accounting Suite
-                </div>
-              </div>
-            </Link>
-
-            <Link
-              to="/GI/TREE.aspx"
-              className="btn btn-sm"
-              style={{
-                backgroundColor: location.pathname === '/GI/TREE.aspx' ? '#0d9488' : '#1e293b',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '12px',
-                padding: '3px 10px',
-                border: '1px solid #334155'
-              }}
+        <div className="soft-header-top">
+          {session?.userId?.toLowerCase() !== 'jubayer' && (
+            <button
+              type="button"
+              className="erp-btn me-2"
+              style={{ height: '19px', fontSize: '11.5px', padding: '0 8px' }}
+              onClick={() => switchAccount('jubayer')}
             >
-              Dashboard
-            </Link>
-
-            {isSuperAdmin && (
-              <Link
-                to="/GI/USERENTRY.aspx"
-                className="btn btn-sm"
-                style={{
-                  backgroundColor: location.pathname === '/GI/USERENTRY.aspx' ? '#0284c7' : 'rgba(14, 165, 233, 0.15)',
-                  color: '#7dd3fc',
-                  fontWeight: 700,
-                  fontSize: '12px',
-                  padding: '3px 11px',
-                  border: '1px solid rgba(56, 189, 248, 0.35)'
-                }}
-              >
-                Admin Power &amp; Shop Control
-              </Link>
-            )}
-          </div>
-
-          <div className="d-flex align-items-center flex-wrap gap-2">
-            {/* Active Shop / Branch Selector */}
-            <div className="d-flex align-items-center gap-1 px-2 py-1 rounded" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
-              <span id="Label1" style={{ fontSize: '11.5px', color: '#94a3b8', fontWeight: 600 }}>Shop / Branch:</span>
-              <select
-                id="CMP_NAME"
-                value={session?.branchName || 'HAZI TRADERS'}
-                onChange={(e) => switchShop(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  color: '#38bdf8',
-                  border: 'none',
-                  fontWeight: 700,
-                  fontSize: '12.5px',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {master.branches.map((b) => (
-                  <option key={b.branch_id} value={b.branch_name} style={{ color: '#0f172a' }}>
-                    {b.branch_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Active Admin Identity & Power Count Badge */}
-            <div className="d-flex align-items-center gap-2 px-2 py-1 rounded" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
-              <span id="Label3" style={{ fontSize: '11.5px', color: '#94a3b8' }}>Admin:</span>
-              <span id="USER_NAME" style={{ fontSize: '12.5px', fontWeight: 700, color: '#f8fafc' }}>
-                {session?.userName || 'JUBAYER'}
-              </span>
-              <span
-                className="badge"
-                style={{
-                  backgroundColor: isSuperAdmin ? '#059669' : '#d97706',
-                  color: '#ffffff',
-                  fontSize: '10.5px',
-                  fontWeight: 700
-                }}
-              >
-                {session?.permissions?.roleLabel || (isSuperAdmin ? 'Super Admin' : 'Custom Admin')} ({allowedCount}/{ALL_ROUTES_COUNT} options)
-              </span>
-            </div>
-
-            {/* Instant Return to Super Admin Button when testing a sub-admin account */}
-            {session?.userId?.toLowerCase() !== 'jubayer' && (
-              <button
-                type="button"
-                className="btn btn-sm"
-                style={{
-                  backgroundColor: '#f59e0b',
-                  color: '#0f172a',
-                  fontWeight: 700,
-                  fontSize: '11.5px',
-                  padding: '3px 10px'
-                }}
-                onClick={() => switchAccount('jubayer')}
-              >
-                Switch back to Master Admin (JUBAYER)
-              </button>
-            )}
-
-            <button type="button" id="btnLogout" onClick={handleLogout}>
-              Logout
+              Back to Admin (JUBAYER)
             </button>
-          </div>
+          )}
+          <span id="Label1" style={{ color: 'Black' }}>Branch Name: </span>
+          <span id="CMP_NAME" style={{ color: 'Black', marginRight: '6px' }}>{session?.branchName || 'HAZI TRADERS'}</span>
+          <span id="Label3" style={{ color: 'Black' }}>Login by: </span>
+          <span id="USER_NAME" style={{ color: 'Black' }}>{session?.userName || 'JUBAYER'}</span>
         </div>
 
-        {/* Dynamic Permission-Driven Module Navigation Bar */}
-        <nav className="navbar navbar-expand-lg erp-navbar">
-          <div className="container-fluid px-0">
-            <div className="d-flex align-items-center flex-wrap" id="navbarMenu">
-              <ul id="ulMenu" className="navbar-nav d-flex flex-row flex-wrap mb-0 ms-0 gap-1">
+        <nav className="navbar navbar-expand-lg navbar-light bg-light erp-navbar">
+          <div className="container-fluid px-1">
+            <div style={{ textAlign: 'left' }} className="d-flex align-items-center flex-wrap" id="navbarMenu">
+              <ul id="ulMenu" className="navbar-nav d-flex flex-row flex-wrap mb-0 ms-0">
                 {visibleMenus.map((m, idx) => (
                   <li
                     key={m.label}
-                    className={`nav-item dropdown erp-nav-item ${openIdx === idx ? 'open' : ''}`}
+                    className={`nav-item me-2 dropdown erp-nav-item ${openIdx === idx ? 'open' : ''}`}
                     style={{ position: 'relative' }}
                   >
                     <span
@@ -285,8 +182,7 @@ export default function Layout({ children }) {
                       role="button"
                       onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
                     >
-                      <span>{m.label}</span>
-                      <span style={{ fontSize: '10px', opacity: 0.7 }}>({m.items.length})</span>
+                      {m.label}
                     </span>
                     {openIdx === idx && (
                       <ul className="erp-dropdown-menu">
@@ -297,8 +193,7 @@ export default function Layout({ children }) {
                               className="erp-dropdown-item"
                               onClick={() => setOpenIdx(null)}
                             >
-                              <span>{sub.label}</span>
-                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>→</span>
+                              {sub.label}
                             </Link>
                           </li>
                         ))}
@@ -307,6 +202,14 @@ export default function Layout({ children }) {
                   </li>
                 ))}
               </ul>
+
+              <button
+                type="button"
+                id="btnLogout"
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
             </div>
           </div>
         </nav>
@@ -315,15 +218,15 @@ export default function Layout({ children }) {
       {toast && (
         <div style={{
           position: 'fixed',
-          top: '94px',
-          right: '20px',
+          top: '56px',
+          right: '18px',
           zIndex: 4500,
-          backgroundColor: toast.type === 'error' ? '#e11d48' : '#0f766e',
+          backgroundColor: toast.type === 'error' ? '#dc3545' : '#14a44d',
           color: '#fff',
-          padding: '8px 18px',
-          borderRadius: '6px',
-          fontWeight: '700',
-          boxShadow: '0 10px 25px rgba(15,23,42,0.35)'
+          padding: '6px 16px',
+          borderRadius: '4px',
+          fontWeight: 'bold',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
         }}>
           {toast.msg}
         </div>

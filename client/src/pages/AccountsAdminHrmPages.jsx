@@ -799,514 +799,272 @@ export function UserEntryPage() {
 
   return (
     <div className="erp-container">
-      {/* Control Center Navigation Tabs */}
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 p-2 rounded bg-white border">
-        <div className="d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-sm fw-bold"
-            style={{
-              backgroundColor: activeTab === 'admins' ? '#0f766e' : '#f1f5f9',
-              color: activeTab === 'admins' ? '#ffffff' : '#0f172a',
-              padding: '6px 16px'
-            }}
-            onClick={() => setActiveTab('admins')}
-          >
-            1. Admin Accounts &amp; Power Control ({master.users.length} Admins)
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm fw-bold"
-            style={{
-              backgroundColor: activeTab === 'shops' ? '#0284c7' : '#f1f5f9',
-              color: activeTab === 'shops' ? '#ffffff' : '#0f172a',
-              padding: '6px 16px'
-            }}
-            onClick={() => setActiveTab('shops')}
-          >
-            2. Open New Shop / Branch Management ({master.branches.length} Shops)
-          </button>
+      <fieldset className="erp-fieldset mb-2">
+        <legend className="erp-legend">User Information</legend>
+
+        <div className="row g-2 align-items-center mb-1">
+          <div className="col-md-2"><label className="erp-label">User ID</label></div>
+          <div className="col-md-4">
+            <AutocompleteInput
+              id="USER_ID"
+              value={form.user_id}
+              onChange={(v) => setForm({ ...form, user_id: v })}
+              options={master.users}
+              labelKey="user_id"
+              subKey="user_name"
+              onSelect={selectUserForEdit}
+            />
+          </div>
+          <div className="col-md-2"><label className="erp-label">User Name</label></div>
+          <div className="col-md-4"><input id="TUSER_NAME" className="erp-input" value={form.user_name} onChange={(e) => setForm({ ...form, user_name: e.target.value })} /></div>
         </div>
-        <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>
-          Back to Dashboard
-        </button>
-      </div>
 
-      {activeTab === 'admins' ? (
-        <div className="row g-3">
-          {/* Left Panel: All Admins List with Instant Select, Test Login, or Remove */}
-          <div className="col-lg-4">
-            <fieldset className="erp-fieldset h-100">
-              <legend className="erp-legend">
-                <span>Admins &amp; Staff Directory</span>
-                <button
-                  type="button"
-                  className="erp-btn"
-                  id="SAVE"
-                  onClick={() => {
-                    setForm({
-                      user_id: '', user_name: '', father_name: '', mother_name: '',
-                      address: 'Dhaka', email: '', mobile: '01700000000', opt_mobile: '',
-                      password: '123456', repassword: '123456', new_password: '',
-                      permission_type: 'U', operate_company: session?.branchName || 'HAZI TRADERS', active: 'Y'
-                    });
-                    applyPreset('SALES_ADMIN');
-                    notify('Ready to create New Admin — enter User ID & Name and configure Power below.');
-                  }}
-                >
-                  + Add New Admin
-                </button>
-              </legend>
+        <div className="row g-2 align-items-center mb-1">
+          <div className="col-md-2"><label className="erp-label">Father Name</label></div>
+          <div className="col-md-4"><input id="M_FATHER_NAME" className="erp-input" value={form.father_name} onChange={(e) => setForm({ ...form, father_name: e.target.value })} /></div>
+          <div className="col-md-2"><label className="erp-label">Mother Name</label></div>
+          <div className="col-md-4"><input id="M_MOTHER_NAME" className="erp-input" value={form.mother_name} onChange={(e) => setForm({ ...form, mother_name: e.target.value })} /></div>
+        </div>
 
-              <div className="d-flex flex-column gap-2" style={{ maxHeight: '690px', overflowY: 'auto' }}>
-                {master.users.map((u) => {
-                  const p = u.permissions || {};
-                  const isAll = Boolean(p.all || p.routes?.includes('*'));
-                  const count = isAll ? ALL_ROUTES_COUNT : (p.routes?.length || 0);
-                  const isSelected = form.user_id.toLowerCase() === u.user_id.toLowerCase();
-                  return (
-                    <div
-                      key={u.user_id}
-                      className="p-2 rounded border"
-                      style={{
-                        backgroundColor: isSelected ? '#f0fdfa' : '#f8fafc',
-                        borderColor: isSelected ? '#0d9488' : '#cbd5e1',
-                        borderWidth: isSelected ? '2px' : '1px'
-                      }}
-                    >
-                      <div className="d-flex justify-content-between align-items-start mb-1">
-                        <div>
-                          <div className="fw-bold" style={{ fontSize: '14px', color: '#0f172a' }}>
-                            {u.user_name} <span className="text-muted">({u.user_id})</span>
-                          </div>
-                          <div style={{ fontSize: '11.5px', color: '#475569' }}>
-                            Shop: <strong>{u.operate_company || 'HAZI TRADERS'}</strong> | Pass: <code>{u.password || '****'}</code>
-                          </div>
-                        </div>
-                        <span className={`badge ${isAll ? 'bg-success' : 'bg-primary'}`}>
-                          {count}/{ALL_ROUTES_COUNT} Options
-                        </span>
-                      </div>
+        <div className="row g-2 align-items-center mb-1">
+          <div className="col-md-2"><label className="erp-label">Address</label></div>
+          <div className="col-md-4"><input id="M_ADDRESS" className="erp-input" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+          <div className="col-md-2"><label className="erp-label">Email</label></div>
+          <div className="col-md-4"><input id="M_EMAIL" className="erp-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+        </div>
 
-                      <div className="mb-2" style={{ fontSize: '11.5px', color: '#0f766e', fontWeight: 700 }}>
-                        Role: {p.roleLabel || (isAll ? 'Super Admin' : 'Custom Admin')}
-                      </div>
+        <div className="row g-2 align-items-center mb-1">
+          <div className="col-md-2"><label className="erp-label">Mobile</label></div>
+          <div className="col-md-4"><input id="M_MOBILE" className="erp-input" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} /></div>
+          <div className="col-md-2"><label className="erp-label">Opt. Mobile</label></div>
+          <div className="col-md-4"><input id="OPT_MOBILE" className="erp-input" value={form.opt_mobile} onChange={(e) => setForm({ ...form, opt_mobile: e.target.value })} /></div>
+        </div>
 
-                      <div className="d-flex flex-wrap gap-1">
+        <div className="row g-2 align-items-center mb-1">
+          <div className="col-md-2"><label className="erp-label">Permission Type</label></div>
+          <div className="col-md-2">
+            <select
+              id="DropDownUserType"
+              className="erp-select"
+              value={form.permission_type}
+              onChange={(e) => {
+                const val = e.target.value;
+                setForm({ ...form, permission_type: val });
+                if (val === 'A') applyPreset('SUPER_ADMIN');
+              }}
+            >
+              <option value="A">ADMINISTRATOR</option>
+              <option value="U">USER</option>
+            </select>
+          </div>
+          <div className="col-md-2"><label className="erp-label">Operate Company</label></div>
+          <div className="col-md-2">
+            <select id="DropDownCompanyName" className="erp-select" value={form.operate_company} onChange={(e) => setForm({ ...form, operate_company: e.target.value })}>
+              <option value=""></option>
+              {master.branches.map((b) => (
+                <option key={b.branch_id} value={b.branch_name}>{b.branch_name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-2"><label className="erp-label">Active</label></div>
+          <div className="col-md-2">
+            <select id="DropDownListActive" className="erp-select" value={form.active} onChange={(e) => setForm({ ...form, active: e.target.value })}>
+              <option value="Y">Yes</option>
+              <option value="N">No</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="row g-2 align-items-center mb-2">
+          <div className="col-md-2"><label className="erp-label">Password</label></div>
+          <div className="col-md-2"><input id="txtPassword" type={showPass ? 'text' : 'password'} className="erp-input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
+          <div className="col-md-1"><label className="erp-label">Re Password</label></div>
+          <div className="col-md-2"><input id="REPASSWORD" type={showPass ? 'text' : 'password'} className="erp-input" value={form.repassword} onChange={(e) => setForm({ ...form, repassword: e.target.value })} /></div>
+          <div className="col-md-1">
+            <label className="erp-label d-flex align-items-center gap-1">
+              <input id="MainContent_CheckBox1" type="checkbox" checked={showPass} onChange={(e) => setShowPass(e.target.checked)} />
+              Show
+            </label>
+          </div>
+          <div className="col-md-1"><label className="erp-label">New Password</label></div>
+          <div className="col-md-3"><input id="CHANGE_PASSWORD" type="text" className="erp-input" value={form.new_password} onChange={(e) => setForm({ ...form, new_password: e.target.value })} /></div>
+        </div>
+
+        <div className="d-flex flex-wrap gap-1 mb-2">
+          <button type="button" id="SAVE" className="erp-btn" onClick={() => handleSaveUserAndPower('save')}>Save / Add Admin</button>
+          <button type="button" id="EDIT" className="erp-btn" onClick={() => handleSaveUserAndPower('save_permissions')}>Edit / Save Power</button>
+          <button type="button" id="CHANGE_PASS" className="erp-btn" onClick={() => handleSaveUserAndPower('change_password')}>Change Password</button>
+          <button type="button" id="DELETE" className="erp-btn" onClick={() => handleSaveUserAndPower('delete')}>Delete Admin</button>
+          {form.user_id && (
+            <button
+              type="button"
+              className="erp-btn"
+              onClick={async () => {
+                await handleSaveUserAndPower('save_permissions');
+                const r = await switchAccount(form.user_id, form.operate_company);
+                if (r.ok) navigate('/GI/TREE.aspx');
+              }}
+            >
+              Login as {form.user_id}
+            </button>
+          )}
+          <button type="button" id="MainContent_CLEAR" className="erp-btn" onClick={() => setForm({ user_id: '', user_name: '', father_name: '', mother_name: '', address: '', email: '', mobile: '', opt_mobile: '', password: '', repassword: '', new_password: '', permission_type: 'U', operate_company: 'HAZI TRADERS', active: 'Y' })}>Clear</button>
+          <button type="button" id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
+        </div>
+
+        {/* Admin Power Checkboxes (Power Increase / Decrease) */}
+        <div className="erp-sublegend">
+          Admin Power Setup for "{form.user_name || form.user_id || 'New Admin'}" ({perms.all ? ALL_ROUTES_COUNT : perms.routes.length}/{ALL_ROUTES_COUNT} Options Active)
+        </div>
+        <div className="d-flex flex-wrap gap-1 mb-2">
+          <button type="button" className="erp-btn" onClick={() => applyPreset('SUPER_ADMIN')}>All Power (57)</button>
+          <button type="button" className="erp-btn" onClick={() => applyPreset('SHOP_MANAGER')}>Shop Manager (19)</button>
+          <button type="button" className="erp-btn" onClick={() => applyPreset('SALES_ADMIN')}>Sales Admin (8)</button>
+          <button type="button" className="erp-btn" onClick={() => applyPreset('ACCOUNTS_ADMIN')}>Accounts Admin (15)</button>
+          <button type="button" className="erp-btn" onClick={() => applyPreset('INVENTORY_ADMIN')}>Purchase &amp; Stock (14)</button>
+          <button type="button" className="erp-btn" onClick={() => applyPreset('RMA_SERVICE_ADMIN')}>RMA &amp; Servicing (11)</button>
+          <button type="button" className="erp-btn" onClick={() => applyPreset('NONE')}>Uncheck All (0)</button>
+        </div>
+
+        <div className="row g-1 mb-2" style={{ maxHeight: '230px', overflowY: 'auto', border: '1px solid #ced4da', padding: '6px', backgroundColor: '#f8f9fa' }}>
+          {MENU_TREE.map((mod) => {
+            const modPaths = mod.items.map(i => i.path);
+            const checkedInMod = modPaths.filter(p => perms.routes.includes(p)).length;
+            const allChecked = checkedInMod === modPaths.length;
+            return (
+              <div key={mod.label} className="col-md-3 col-6">
+                <div className="border p-1 h-100" style={{ backgroundColor: '#fff' }}>
+                  <label className="erp-label d-flex align-items-center justify-content-between border-bottom pb-1 mb-1" style={{ cursor: 'pointer', backgroundColor: '#cfe2ff', padding: '2px 5px' }}>
+                    <span>
+                      <input type="checkbox" className="me-1" checked={allChecked} onChange={() => toggleModuleAll(mod)} />
+                      {mod.label}
+                    </span>
+                    <span>({checkedInMod}/{modPaths.length})</span>
+                  </label>
+                  {mod.items.map((sub) => (
+                    <label key={sub.path} className="d-flex align-items-center gap-1" style={{ fontSize: '12px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={perms.routes.includes(sub.path)}
+                        onChange={() => toggleRoute(sub.path)}
+                      />
+                      <span>{sub.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* All Admins List Table */}
+        <div className="erp-grid-box mb-2" style={{ minHeight: '125px', maxHeight: '165px' }}>
+          <table className="erp-table">
+            <thead>
+              <tr>
+                <th>SL</th>
+                <th>User ID</th>
+                <th>User Name</th>
+                <th>Password</th>
+                <th>Shop / Branch</th>
+                <th>Power Count</th>
+                <th>Select / Edit Power</th>
+                <th>Test Login</th>
+                <th>Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {master.users.map((u, idx) => {
+                const p = u.permissions || {};
+                const isAll = Boolean(p.all || p.routes?.includes('*'));
+                const count = isAll ? ALL_ROUTES_COUNT : (p.routes?.length || 0);
+                return (
+                  <tr key={u.user_id}>
+                    <td>{idx + 1}</td>
+                    <td>{u.user_id}</td>
+                    <td>{u.user_name}</td>
+                    <td>{u.password}</td>
+                    <td>{u.operate_company || 'HAZI TRADERS'}</td>
+                    <td>{count} / {ALL_ROUTES_COUNT} Options</td>
+                    <td><button type="button" className="erp-btn" onClick={() => selectUserForEdit(u)}>Select / Power</button></td>
+                    <td>
+                      <button
+                        type="button"
+                        className="erp-btn"
+                        onClick={async () => {
+                          const r = await switchAccount(u.user_id, u.operate_company);
+                          if (r.ok) navigate('/GI/TREE.aspx');
+                        }}
+                      >
+                        Login as {u.user_id}
+                      </button>
+                    </td>
+                    <td>
+                      {u.user_id.toLowerCase() !== 'jubayer' && (
                         <button
                           type="button"
                           className="erp-btn"
-                          style={{ height: '25px', fontSize: '11.5px' }}
-                          onClick={() => selectUserForEdit(u)}
-                        >
-                          Configure Power
-                        </button>
-                        <button
-                          type="button"
-                          className="erp-btn"
-                          style={{ height: '25px', fontSize: '11.5px', backgroundColor: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
                           onClick={async () => {
-                            const r = await switchAccount(u.user_id, u.operate_company);
-                            if (r.ok) navigate('/GI/TREE.aspx');
+                            const res = await fetch('/api/setup/user', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'delete', user_id: u.user_id })
+                            });
+                            const d = await res.json();
+                            if (d.ok) {
+                              notify(d.message);
+                              await refreshMaster();
+                            }
                           }}
                         >
-                          Login as {u.user_id}
+                          Delete
                         </button>
-                        {u.user_id.toLowerCase() !== 'jubayer' && (
-                          <button
-                            type="button"
-                            className="erp-btn"
-                            style={{ height: '25px', fontSize: '11.5px', backgroundColor: '#fff1f2', color: '#be123c', borderColor: '#fecdd3' }}
-                            onClick={async () => {
-                              const res = await fetch('/api/setup/user', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ action: 'delete', user_id: u.user_id })
-                              });
-                              const d = await res.json();
-                              if (d.ok) {
-                                notify(d.message);
-                                await refreshMaster();
-                              }
-                            }}
-                          >
-                            Remove Admin
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </fieldset>
-          </div>
-
-          {/* Right Panel: Admin Profile Form + Interactive 57-Option Power Matrix */}
-          <div className="col-lg-8">
-            <fieldset className="erp-fieldset mb-3">
-              <legend className="erp-legend">
-                <span>User Information &amp; Credentials — {form.user_name || 'NEW ADMIN'}</span>
-                <span className="badge bg-dark">
-                  Selected Power: {perms.all ? ALL_ROUTES_COUNT : perms.routes.length} / {ALL_ROUTES_COUNT} Screens
-                </span>
-              </legend>
-
-              <div className="row g-2 align-items-center mb-2">
-                <div className="col-md-2"><label className="erp-label">User ID</label></div>
-                <div className="col-md-4">
-                  <AutocompleteInput
-                    id="USER_ID"
-                    placeholder="Enter new or existing User ID"
-                    value={form.user_id}
-                    onChange={(v) => setForm({ ...form, user_id: v })}
-                    options={master.users}
-                    labelKey="user_id"
-                    subKey="user_name"
-                    onSelect={selectUserForEdit}
-                  />
-                </div>
-                <div className="col-md-2"><label className="erp-label">User Name</label></div>
-                <div className="col-md-4"><input id="TUSER_NAME" className="erp-input" placeholder="Full Name" value={form.user_name} onChange={(e) => setForm({ ...form, user_name: e.target.value })} /></div>
-              </div>
-
-              <div className="row g-2 align-items-center mb-2">
-                <div className="col-md-2"><label className="erp-label">Father Name</label></div>
-                <div className="col-md-4"><input id="M_FATHER_NAME" className="erp-input" value={form.father_name} onChange={(e) => setForm({ ...form, father_name: e.target.value })} /></div>
-                <div className="col-md-2"><label className="erp-label">Mother Name</label></div>
-                <div className="col-md-4"><input id="M_MOTHER_NAME" className="erp-input" value={form.mother_name} onChange={(e) => setForm({ ...form, mother_name: e.target.value })} /></div>
-              </div>
-
-              <div className="row g-2 align-items-center mb-2">
-                <div className="col-md-2"><label className="erp-label">Address</label></div>
-                <div className="col-md-4"><input id="M_ADDRESS" className="erp-input" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-                <div className="col-md-2"><label className="erp-label">Email</label></div>
-                <div className="col-md-4"><input id="M_EMAIL" className="erp-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              </div>
-
-              <div className="row g-2 align-items-center mb-2">
-                <div className="col-md-2"><label className="erp-label">Mobile</label></div>
-                <div className="col-md-4"><input id="M_MOBILE" className="erp-input" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} /></div>
-                <div className="col-md-2"><label className="erp-label">Opt. Mobile</label></div>
-                <div className="col-md-4"><input id="OPT_MOBILE" className="erp-input" value={form.opt_mobile} onChange={(e) => setForm({ ...form, opt_mobile: e.target.value })} /></div>
-              </div>
-
-              <div className="row g-2 align-items-center mb-2">
-                <div className="col-md-2"><label className="erp-label">Permission Type</label></div>
-                <div className="col-md-2">
-                  <select
-                    id="DropDownUserType"
-                    className="erp-select"
-                    value={form.permission_type}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setForm({ ...form, permission_type: val });
-                      if (val === 'A') applyPreset('SUPER_ADMIN');
-                    }}
-                  >
-                    <option value="A">ADMINISTRATOR</option>
-                    <option value="U">USER / CUSTOM ADMIN</option>
-                  </select>
-                </div>
-                <div className="col-md-2"><label className="erp-label">Assigned Shop</label></div>
-                <div className="col-md-3">
-                  <select id="DropDownCompanyName" className="erp-select" value={form.operate_company} onChange={(e) => setForm({ ...form, operate_company: e.target.value })}>
-                    {master.branches.map((b) => (
-                      <option key={b.branch_id} value={b.branch_name}>{b.branch_name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-md-1"><label className="erp-label">Active</label></div>
-                <div className="col-md-2">
-                  <select id="DropDownListActive" className="erp-select" value={form.active} onChange={(e) => setForm({ ...form, active: e.target.value })}>
-                    <option value="Y">Yes</option>
-                    <option value="N">No</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="row g-2 align-items-center mb-3">
-                <div className="col-md-2"><label className="erp-label">Password</label></div>
-                <div className="col-md-2"><input id="txtPassword" type={showPass ? 'text' : 'password'} className="erp-input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
-                <div className="col-md-1"><label className="erp-label">Re Pass</label></div>
-                <div className="col-md-2"><input id="REPASSWORD" type={showPass ? 'text' : 'password'} className="erp-input" value={form.repassword} onChange={(e) => setForm({ ...form, repassword: e.target.value })} /></div>
-                <div className="col-md-1">
-                  <label className="erp-label d-flex align-items-center gap-1">
-                    <input id="MainContent_CheckBox1" type="checkbox" checked={showPass} onChange={(e) => setShowPass(e.target.checked)} />
-                    Show
-                  </label>
-                </div>
-                <div className="col-md-1"><label className="erp-label">New Pass</label></div>
-                <div className="col-md-3"><input id="CHANGE_PASSWORD" type="text" className="erp-input" placeholder="Optional new password" value={form.new_password} onChange={(e) => setForm({ ...form, new_password: e.target.value })} /></div>
-              </div>
-
-              <div className="d-flex flex-wrap gap-2">
-                <button id="SAVE" className="erp-btn" onClick={() => handleSaveUserAndPower('save')}>
-                  Save Admin &amp; Power
-                </button>
-                <button id="CHANGE_PASS" className="erp-btn" onClick={() => handleSaveUserAndPower('change_password')}>
-                  Change Password
-                </button>
-                {form.user_id && (
-                  <button
-                    type="button"
-                    className="erp-btn"
-                    style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
-                    onClick={async () => {
-                      await handleSaveUserAndPower('save_permissions');
-                      const r = await switchAccount(form.user_id, form.operate_company);
-                      if (r.ok) navigate('/GI/TREE.aspx');
-                    }}
-                  >
-                    Save &amp; Login as "{form.user_id}" Now
-                  </button>
-                )}
-                {form.user_id && form.user_id.toLowerCase() !== 'jubayer' && (
-                  <button id="DELETE" className="erp-btn" onClick={() => handleSaveUserAndPower('delete')}>
-                    Remove Admin
-                  </button>
-                )}
-                <button id="MainContent_CLEAR" className="erp-btn" onClick={() => setForm({ user_id: '', user_name: '', father_name: '', mother_name: '', address: '', email: '', mobile: '', opt_mobile: '', password: '', repassword: '', new_password: '', permission_type: 'U', operate_company: 'HAZI TRADERS', active: 'Y' })}>
-                  Clear
-                </button>
-              </div>
-            </fieldset>
-
-            {/* Granular Admin Power Matrix */}
-            <fieldset className="erp-fieldset">
-              <legend className="erp-legend">
-                <span>Granular Admin Power Matrix (অ্যাডমিন পাওয়ার কমানো ও বাড়ানো)</span>
-                <button
-                  type="button"
-                  id="SAVE_BUTTON"
-                  className="erp-btn"
-                  onClick={() => handleSaveUserAndPower('save_permissions')}
-                >
-                  Apply &amp; Save Power Changes
-                </button>
-              </legend>
-
-              {/* 1-Click Role Templates */}
-              <div className="mb-3 p-2 rounded border" style={{ backgroundColor: '#f8fafc' }}>
-                <div className="fw-bold mb-1" style={{ fontSize: '12px', color: '#475569' }}>
-                  QUICK POWER PRESETS (1-CLICK ASSIGN):
-                </div>
-                <div className="d-flex flex-wrap gap-1">
-                  <button type="button" className="erp-btn" onClick={() => applyPreset('SUPER_ADMIN')}>Full Super Admin (All 57)</button>
-                  <button type="button" className="erp-btn" onClick={() => applyPreset('SHOP_MANAGER')}>Shop Manager (19)</button>
-                  <button type="button" className="erp-btn" onClick={() => applyPreset('SALES_ADMIN')}>Sales &amp; Billing Admin (8)</button>
-                  <button type="button" className="erp-btn" onClick={() => applyPreset('ACCOUNTS_ADMIN')}>Accounts &amp; Cashier (15)</button>
-                  <button type="button" className="erp-btn" onClick={() => applyPreset('INVENTORY_ADMIN')}>Inventory &amp; Purchase (14)</button>
-                  <button type="button" className="erp-btn" onClick={() => applyPreset('RMA_SERVICE_ADMIN')}>RMA &amp; Servicing (11)</button>
-                  <button type="button" className="erp-btn text-danger" onClick={() => applyPreset('NONE')}>Uncheck All (0)</button>
-                </div>
-              </div>
-
-              {/* Action-Level Capabilities */}
-              <div className="mb-3 p-2 rounded border d-flex flex-wrap gap-3 align-items-center" style={{ backgroundColor: '#f0fdfa', borderColor: '#99f6e4' }}>
-                <span className="fw-bold" style={{ fontSize: '12.5px', color: '#0f766e' }}>Action Capabilities:</span>
-                {[
-                  ['create', 'Can Create / Save'],
-                  ['edit', 'Can Edit Records'],
-                  ['delete', 'Can Delete Records'],
-                  ['print', 'Can Print & Export Excel'],
-                  ['manageAdmins', 'Can Manage Admins'],
-                  ['manageShops', 'Can Open / Remove Shops']
-                ].map(([key, label]) => (
-                  <label key={key} className="erp-label d-flex align-items-center gap-1" style={{ cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(perms.actions?.[key])}
-                      onChange={(e) => setPerms({
-                        ...perms,
-                        actions: { ...perms.actions, [key]: e.target.checked }
-                      })}
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-
-              {/* Module & Individual Option Checkboxes (All 10 Modules, All 57 Options) */}
-              <div className="row g-2" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                {MENU_TREE.map((mod) => {
-                  const modPaths = mod.items.map(i => i.path);
-                  const checkedInMod = modPaths.filter(p => perms.routes.includes(p)).length;
-                  const allChecked = checkedInMod === modPaths.length;
-                  return (
-                    <div key={mod.label} className="col-md-6">
-                      <div className="border rounded p-2 h-100" style={{ backgroundColor: '#ffffff' }}>
-                        <div className="d-flex justify-content-between align-items-center pb-1 mb-2 border-bottom" style={{ backgroundColor: '#f8fafc', padding: '4px 8px', borderRadius: '4px' }}>
-                          <label className="fw-bold d-flex align-items-center gap-2 mb-0" style={{ cursor: 'pointer', fontSize: '13.5px', color: '#0f172a' }}>
-                            <input
-                              type="checkbox"
-                              checked={allChecked}
-                              onChange={() => toggleModuleAll(mod)}
-                            />
-                            {mod.label}
-                          </label>
-                          <span className={`badge ${checkedInMod > 0 ? 'bg-success' : 'bg-secondary'}`}>
-                            {checkedInMod} / {modPaths.length}
-                          </span>
-                        </div>
-                        <div className="d-flex flex-column gap-1 px-1">
-                          {mod.items.map((sub) => {
-                            const checked = perms.routes.includes(sub.path);
-                            return (
-                              <label
-                                key={sub.path}
-                                className="d-flex align-items-center justify-content-between px-2 py-1 rounded"
-                                style={{
-                                  cursor: 'pointer',
-                                  backgroundColor: checked ? '#f0fdf4' : 'transparent',
-                                  fontSize: '12.5px',
-                                  fontWeight: checked ? 700 : 500,
-                                  color: checked ? '#166534' : '#475569'
-                                }}
-                              >
-                                <span className="d-flex align-items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleRoute(sub.path)}
-                                  />
-                                  {sub.label}
-                                </span>
-                                <code style={{ fontSize: '10.5px', color: '#94a3b8' }}>{sub.path.replace('/GI/', '')}</code>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </fieldset>
-          </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        /* TAB 2: OPEN NEW SHOP / BRANCH MANAGEMENT */
-        <div className="row g-3">
-          <div className="col-md-5">
-            <fieldset className="erp-fieldset h-100">
-              <legend className="erp-legend">Open New Shop / Branch</legend>
-              <div className="mb-2">
-                <label className="erp-label mb-1 d-block">Shop / Branch Name *</label>
-                <input
-                  id="NEW_SHOP_NAME"
-                  className="erp-input"
-                  placeholder="e.g. HAZI TRADERS - MIRPUR SHOP"
-                  value={shopForm.branch_name}
-                  onChange={(e) => setShopForm({ ...shopForm, branch_name: e.target.value })}
-                />
-              </div>
-              <div className="mb-2">
-                <label className="erp-label mb-1 d-block">Shop Address / Location</label>
-                <input
-                  id="NEW_SHOP_ADDRESS"
-                  className="erp-input"
-                  placeholder="e.g. Mirpur-10 Circle, Dhaka"
-                  value={shopForm.address}
-                  onChange={(e) => setShopForm({ ...shopForm, address: e.target.value })}
-                />
-              </div>
-              <div className="row g-2 mb-2">
-                <div className="col-6">
-                  <label className="erp-label mb-1 d-block">Phone / Hotline</label>
-                  <input
-                    id="NEW_SHOP_PHONE"
-                    className="erp-input"
-                    value={shopForm.phone}
-                    onChange={(e) => setShopForm({ ...shopForm, phone: e.target.value })}
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="erp-label mb-1 d-block">Shop Manager Name</label>
-                  <input
-                    id="NEW_SHOP_MANAGER"
-                    className="erp-input"
-                    value={shopForm.manager_name}
-                    onChange={(e) => setShopForm({ ...shopForm, manager_name: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="mb-3">
-                <label className="erp-label mb-1 d-block">Shop Email</label>
-                <input
-                  className="erp-input"
-                  value={shopForm.email}
-                  onChange={(e) => setShopForm({ ...shopForm, email: e.target.value })}
-                />
-              </div>
-              <div className="d-flex gap-2">
-                <button id="SAVE" className="erp-btn" onClick={() => handleShopAction('save')}>
-                  + Open &amp; Save Shop
-                </button>
-                <button className="erp-btn" onClick={() => setShopForm({ branch_id: '', branch_name: '', address: '', phone: '01818524712', email: 'info@hazierp.top', manager_name: 'JUBAYER AHMED', status: 'ACTIVE' })}>
-                  Clear
-                </button>
-              </div>
-            </fieldset>
-          </div>
 
-          <div className="col-md-7">
-            <fieldset className="erp-fieldset h-100">
-              <legend className="erp-legend">All Active Shops / Branches ({master.branches.length})</legend>
-              <div className="erp-grid-box">
-                <table className="erp-table">
-                  <thead>
-                    <tr>
-                      <th>Shop ID</th>
-                      <th>Shop / Branch Name</th>
-                      <th>Location / Address</th>
-                      <th>Phone</th>
-                      <th>Manager</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {master.branches.map((b) => (
-                      <tr key={b.branch_id}>
-                        <td className="fw-bold">{b.branch_id}</td>
-                        <td className="fw-bold">{b.branch_name}</td>
-                        <td>{b.address || 'Dhaka'}</td>
-                        <td>{b.phone || '01818524712'}</td>
-                        <td>{b.manager_name || 'JUBAYER AHMED'}</td>
-                        <td className="d-flex gap-1">
-                          <button
-                            type="button"
-                            className="erp-btn"
-                            onClick={() => switchShop(b.branch_name)}
-                          >
-                            {session?.branchName === b.branch_name ? 'Active' : 'Switch Shop'}
-                          </button>
-                          <button
-                            type="button"
-                            className="erp-btn"
-                            onClick={() => setShopForm({ ...b })}
-                          >
-                            Edit
-                          </button>
-                          {b.branch_id !== 'BR001' && (
-                            <button
-                              type="button"
-                              id="DELETE"
-                              className="erp-btn"
-                              onClick={() => handleShopAction('delete', b)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </fieldset>
-          </div>
+        {/* Open New Shop / Branch Section */}
+        <div className="erp-sublegend">Open New Shop / Branch Management</div>
+        <div className="row g-1 align-items-center mb-1">
+          <div className="col-md-1"><label className="erp-label">Shop Name</label></div>
+          <div className="col-md-3"><input id="NEW_SHOP_NAME" className="erp-input" placeholder="e.g. HAZI TRADERS-3" value={shopForm.branch_name} onChange={(e) => setShopForm({ ...shopForm, branch_name: e.target.value })} /></div>
+          <div className="col-md-1"><label className="erp-label">Address</label></div>
+          <div className="col-md-3"><input id="NEW_SHOP_ADDRESS" className="erp-input" placeholder="Address" value={shopForm.address} onChange={(e) => setShopForm({ ...shopForm, address: e.target.value })} /></div>
+          <div className="col-md-1"><label className="erp-label">Phone</label></div>
+          <div className="col-md-1"><input id="NEW_SHOP_PHONE" className="erp-input" value={shopForm.phone} onChange={(e) => setShopForm({ ...shopForm, phone: e.target.value })} /></div>
+          <div className="col-md-2"><button type="button" className="erp-btn w-100" onClick={() => handleShopAction('save')}>Open / Save Shop</button></div>
         </div>
-      )}
+
+        <div className="erp-grid-box" style={{ minHeight: '95px', maxHeight: '130px' }}>
+          <table className="erp-table">
+            <thead>
+              <tr><th>Shop ID</th><th>Shop / Branch Name</th><th>Address</th><th>Phone</th><th>Switch Shop</th><th>Edit</th><th>Delete</th></tr>
+            </thead>
+            <tbody>
+              {master.branches.map((b) => (
+                <tr key={b.branch_id}>
+                  <td>{b.branch_id}</td>
+                  <td>{b.branch_name}</td>
+                  <td>{b.address}</td>
+                  <td>{b.phone}</td>
+                  <td><button type="button" className="erp-btn" onClick={() => switchShop(b.branch_name)}>{session?.branchName === b.branch_name ? 'Active' : 'Switch'}</button></td>
+                  <td><button type="button" className="erp-btn" onClick={() => setShopForm({ ...b })}>Edit</button></td>
+                  <td>
+                    {b.branch_id !== 'BR001' && (
+                      <button type="button" className="erp-btn" onClick={() => handleShopAction('delete', b)}>Delete</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </fieldset>
     </div>
   );
 }
