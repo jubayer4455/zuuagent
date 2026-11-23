@@ -555,7 +555,9 @@ app.post('/api/admin/shops', (req, res) => {
     phone = '01818524712',
     email = 'info@hazierp.top',
     manager_name = 'JUBAYER AHMED',
-    status = 'ACTIVE'
+    status = 'ACTIVE',
+    logo_url = '/IMAGE/unisoft.svg',
+    invoice_footer = 'Warranty void if sticker removed or burn/physical damage.'
   } = req.body;
 
   if (action === 'delete') {
@@ -574,9 +576,20 @@ app.post('/api/admin/shops', (req, res) => {
   const id = existing ? existing.branch_id : nextId('branches', 'branch_id', 'BR', 3);
 
   db.prepare(`
-    INSERT OR REPLACE INTO branches (branch_id, company_id, branch_name, address, phone, email, manager_name, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, company_id, cleanName, address, phone, email, manager_name, status);
+    INSERT OR REPLACE INTO branches (branch_id, company_id, branch_name, address, phone, email, manager_name, status, logo_url, invoice_footer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    company_id,
+    cleanName,
+    address || existing?.address || 'Dhaka, Bangladesh',
+    phone || existing?.phone || '01818524712',
+    email || existing?.email || 'info@hazierp.top',
+    manager_name || existing?.manager_name || 'JUBAYER AHMED',
+    status || existing?.status || 'ACTIVE',
+    logo_url || existing?.logo_url || '/IMAGE/unisoft.svg',
+    invoice_footer || existing?.invoice_footer || 'Warranty void if sticker removed or burn/physical damage.'
+  );
 
   // Ensure default store exists for new shop
   const stId = nextId('stores', 'store_id', 'ST', 3);

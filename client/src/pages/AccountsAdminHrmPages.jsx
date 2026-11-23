@@ -660,8 +660,23 @@ export function UserEntryPage() {
     phone: '01818524712',
     email: 'info@hazierp.top',
     manager_name: 'JUBAYER AHMED',
-    status: 'ACTIVE'
+    status: 'ACTIVE',
+    logo_url: '/IMAGE/unisoft.svg',
+    invoice_footer: 'Warranty void if sticker removed or burn/physical damage.'
   });
+
+  const handleShopLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      setShopForm(s => ({ ...s, logo_url: data.url }));
+      notify('Shop Logo uploaded');
+    }
+  };
 
   const selectUserForEdit = useCallback((u) => {
     if (!u) return;
@@ -1028,32 +1043,45 @@ export function UserEntryPage() {
           </table>
         </div>
 
-        {/* Open New Shop / Branch Section */}
-        <div className="erp-sublegend">Open New Shop / Branch Management</div>
+        {/* Open New Shop / Branch & Invoice Header Branding Section */}
+        <div className="erp-sublegend">Open New Shop / Branch &amp; Invoice Header/Logo Branding</div>
         <div className="row g-1 align-items-center mb-1">
           <div className="col-md-1"><label className="erp-label">Shop Name</label></div>
-          <div className="col-md-3"><input id="NEW_SHOP_NAME" className="erp-input" placeholder="e.g. HAZI TRADERS-3" value={shopForm.branch_name} onChange={(e) => setShopForm({ ...shopForm, branch_name: e.target.value })} /></div>
+          <div className="col-md-2"><input id="NEW_SHOP_NAME" className="erp-input" placeholder="e.g. HAZI TRADERS-3" value={shopForm.branch_name} onChange={(e) => setShopForm({ ...shopForm, branch_name: e.target.value })} /></div>
           <div className="col-md-1"><label className="erp-label">Address</label></div>
-          <div className="col-md-3"><input id="NEW_SHOP_ADDRESS" className="erp-input" placeholder="Address" value={shopForm.address} onChange={(e) => setShopForm({ ...shopForm, address: e.target.value })} /></div>
+          <div className="col-md-2"><input id="NEW_SHOP_ADDRESS" className="erp-input" placeholder="Shop Address" value={shopForm.address} onChange={(e) => setShopForm({ ...shopForm, address: e.target.value })} /></div>
           <div className="col-md-1"><label className="erp-label">Phone</label></div>
           <div className="col-md-1"><input id="NEW_SHOP_PHONE" className="erp-input" value={shopForm.phone} onChange={(e) => setShopForm({ ...shopForm, phone: e.target.value })} /></div>
-          <div className="col-md-2"><button type="button" className="erp-btn w-100" onClick={() => handleShopAction('save')}>Open / Save Shop</button></div>
+          <div className="col-md-1"><label className="erp-label">Invoice Footer</label></div>
+          <div className="col-md-2"><input id="NEW_SHOP_FOOTER" className="erp-input" placeholder="Invoice Footer Note" value={shopForm.invoice_footer || ''} onChange={(e) => setShopForm({ ...shopForm, invoice_footer: e.target.value })} /></div>
+          <div className="col-md-1">
+            <label className="erp-btn d-inline-block text-center w-100" style={{ cursor: 'pointer' }}>
+              Logo
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleShopLogoUpload} />
+            </label>
+          </div>
+        </div>
+        <div className="d-flex gap-1 mb-1">
+          <button type="button" className="erp-btn" onClick={() => handleShopAction('save')}>Open / Save Shop &amp; Branding</button>
+          <button type="button" className="erp-btn" onClick={() => setShopForm({ branch_id: '', branch_name: '', address: '', phone: '01818524712', email: 'info@hazierp.top', manager_name: 'JUBAYER AHMED', status: 'ACTIVE', logo_url: '/IMAGE/unisoft.svg', invoice_footer: 'Warranty void if sticker removed or burn/physical damage.' })}>Clear Shop Form</button>
         </div>
 
         <div className="erp-grid-box" style={{ minHeight: '95px', maxHeight: '130px' }}>
           <table className="erp-table">
             <thead>
-              <tr><th>Shop ID</th><th>Shop / Branch Name</th><th>Address</th><th>Phone</th><th>Switch Shop</th><th>Edit</th><th>Delete</th></tr>
+              <tr><th>Logo</th><th>Shop ID</th><th>Shop / Branch Name</th><th>Address</th><th>Phone</th><th>Invoice Footer</th><th>Switch Shop</th><th>Edit Branding</th><th>Delete</th></tr>
             </thead>
             <tbody>
               {master.branches.map((b) => (
                 <tr key={b.branch_id}>
+                  <td><img src={b.logo_url || '/IMAGE/unisoft.svg'} alt="logo" style={{ width: '22px', height: '22px', borderRadius: '50%' }} /></td>
                   <td>{b.branch_id}</td>
                   <td>{b.branch_name}</td>
                   <td>{b.address}</td>
                   <td>{b.phone}</td>
+                  <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.invoice_footer || 'Default'}</td>
                   <td><button type="button" className="erp-btn" onClick={() => switchShop(b.branch_name)}>{session?.branchName === b.branch_name ? 'Active' : 'Switch'}</button></td>
-                  <td><button type="button" className="erp-btn" onClick={() => setShopForm({ ...b })}>Edit</button></td>
+                  <td><button type="button" className="erp-btn" onClick={() => setShopForm({ ...shopForm, ...b })}>Edit</button></td>
                   <td>
                     {b.branch_id !== 'BR001' && (
                       <button type="button" className="erp-btn" onClick={() => handleShopAction('delete', b)}>Delete</button>

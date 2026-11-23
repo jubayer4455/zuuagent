@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useErp, getTodayStr, getMonthStartStr } from '../context/ErpContext.jsx';
 import AutocompleteInput from '../components/AutocompleteInput.jsx';
+import { openWhatsAppChat, buildWhatsAppInvoiceText } from '../utils/whatsapp.js';
 
 // 18. PURCHASE.aspx — Purchase
 export function PurchasePage() {
@@ -9,6 +10,7 @@ export function PurchasePage() {
   const navigate = useNavigate();
   const [purchases, setPurchases] = useState([]);
   const [navIdx, setNavIdx] = useState(-1);
+  const [scanCode, setScanCode] = useState('');
   const [header, setHeader] = useState({
     ref_no: '',
     purchase_date: getTodayStr(),
@@ -78,6 +80,54 @@ export function PurchasePage() {
       payment_amount: String(rec.payment_amount || 0)
     });
     setItems(rec.items || []);
+  };
+
+  const handleBarcodeQuickAdd = (rawValue) => {
+    const code = String(rawValue || scanCode || '').trim();
+    if (!code) return;
+    const lower = code.toLowerCase();
+    const matchedSerial = (master.serials || []).find(s => String(s.serial_no || '').toLowerCase() === lower);
+    const matchedProd = (master.products || []).find(p =>
+      String(p.barcode_id || '').toLowerCase() === lower ||
+      String(p.product_id || '').toLowerCase() === lower ||
+      String(p.product_name || '').toLowerCase() === lower ||
+      (matchedSerial && p.product_id === matchedSerial.product_id)
+    );
+    if (!matchedProd) {
+      notify(`No Product or Barcode matched "${code}"`, 'error');
+      return;
+    }
+    const up = Number(matchedProd.purchase_price || 0);
+    const serialVal = matchedSerial ? matchedSerial.serial_no : (String(matchedProd.barcode_id) !== code && String(matchedProd.product_id) !== code ? code : '');
+    setLine({
+      ...line,
+      product_id: matchedProd.product_id,
+      product_group: matchedProd.group_name,
+      product_name: matchedProd.product_name,
+      product_description: matchedProd.description || matchedProd.product_name,
+      warranty: matchedProd.warranty || '12 Months',
+      serial_from: serialVal,
+      unit_price: String(up),
+      stock_qty: matchedProd.stock_qty || 0,
+      qty: '1'
+    });
+    setItems(prev => [
+      ...prev,
+      {
+        product_id: matchedProd.product_id,
+        product_group: matchedProd.group_name,
+        product_name: matchedProd.product_name,
+        product_description: matchedProd.description || matchedProd.product_name,
+        warranty: matchedProd.warranty || '12 Months',
+        expiry_date: line.expiry_date,
+        serial_no: serialVal,
+        qty: 1,
+        unit_price: up,
+        total_price: up
+      }
+    ]);
+    setScanCode('');
+    notify(`Scanned & Added: ${matchedProd.product_name} (${matchedProd.product_id})`);
   };
 
   const handleAddOrSave = async () => {
@@ -160,6 +210,35 @@ export function PurchasePage() {
     <div className="erp-container">
       <fieldset className="erp-fieldset">
         <legend className="erp-legend">Purchase</legend>
+
+        <div className="row g-1 align-items-center mb-1 p-1 rounded" style={{ background: '#e7f1ff', border: '1px solid #b6d4fe' }}>
+          <div className="col-md-2">
+            <label className="erp-label fw-bold text-primary">▣ Barcode / Serial Quick Scan</label>
+          </div>
+          <div className="col-md-5">
+            <input
+              id="PURCHASE_BARCODE_SCAN"
+              className="erp-input"
+              placeholder="Scan Barcode (e.g. 89010001), Product ID (PRD00001) or Serial & Press Enter..."
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleBarcodeQuickAdd(e.target.value);
+                }
+              }}
+            />
+          </div>
+          <div className="col-md-2">
+            <button id="BTN_PURCHASE_SCAN_ADD" type="button" className="erp-btn w-100 fw-bold" onClick={() => handleBarcodeQuickAdd(scanCode)}>
+              Scan &amp; Add Item
+            </button>
+          </div>
+          <div className="col-md-3 text-muted" style={{ fontSize: '11px' }}>
+            Tip: USB Barcode Scanner auto-adds on Enter
+          </div>
+        </div>
 
         <div className="row g-1 align-items-center mb-1">
           <div className="col-md-1"><label className="erp-label">Ref./Bill No.</label></div>
@@ -854,11 +933,12 @@ export function PriceQuotationPage() {
 
 // 21. SALES.aspx — Sales/Invoice (Exact pixel match to final_step_79.png)
 export function SalesPage() {
-  const { master, refreshMaster, notify, openPrint } = useErp();
+  const { user, master, refreshMaster, notify, openPrint } = useErp();
   const navigate = useNavigate();
   const [salesList, setSalesList] = useState([]);
   const [navIdx, setNavIdx] = useState(-1);
   const [showCost, setShowCost] = useState(false);
+  const [scanCode, setScanCode] = useState('');
 
   const [header, setHeader] = useState({
     ref_no: '',
@@ -953,6 +1033,84 @@ export function SalesPage() {
     setItems(inv.items || []);
   };
 
+  const activeBranchInfo = (master?.branches || []).find(b => b.branch_name === (user?.branch || 'HAZI TRADERS')) || master?.branches?.[0] || {};
+
+  const handleSalesBarcodeScan = (rawValue) => {
+    const code = String(rawValue || scanCode || '').trim();
+    if (!code) return;
+    const lower = code.toLowerCase();
+    const matchedSerial = (master.serials || []).find(s => String(s.serial_no || '').toLowerCase() === lower);
+    const matchedProd = (master.products || []).find(p =>
+      String(p.barcode_id || '').toLowerCase() === lower ||
+      String(p.product_id || '').toLowerCase() === lower ||
+      String(p.product_name || '').toLowerCase() === lower ||
+      (matchedSerial && p.product_id === matchedSerial.product_id)
+    );
+    if (!matchedProd) {
+      notify(`No Product, Barcode or Serial matched "${code}"`, 'error');
+      return;
+    }
+    const tierPrice = header.price_tier === 'WHOLE_SALES_PRICE'
+      ? matchedProd.wholesale_price
+      : header.price_tier === 'DEALER_PRICE'
+      ? matchedProd.dealer_price
+      : matchedProd.sales_price;
+    const up = Number(tierPrice || matchedProd.sales_price || 0);
+    const serialVal = matchedSerial ? matchedSerial.serial_no : '';
+    setLine({
+      ...line,
+      product_id: matchedProd.product_id,
+      product_group: matchedProd.group_name,
+      product_name: matchedProd.product_name,
+      product_description: matchedProd.description || matchedProd.product_name,
+      warranty: matchedProd.warranty || '12 Months',
+      serial_from: serialVal,
+      unit_price: String(up),
+      stock_qty: matchedProd.stock_qty || 0,
+      cost_price: matchedProd.purchase_price || 0,
+      qty: '1'
+    });
+    setItems(prev => [
+      ...prev,
+      {
+        product_id: matchedProd.product_id,
+        product_group: matchedProd.group_name,
+        product_name: matchedProd.product_name,
+        product_description: matchedProd.description || matchedProd.product_name,
+        item_remarks: line.item_remarks,
+        warranty: matchedProd.warranty || '12 Months',
+        serial_no: serialVal,
+        qty: 1,
+        unit_price: up,
+        discount: 0,
+        vat_percent: 0,
+        total_price: up
+      }
+    ]);
+    setScanCode('');
+    notify(`Scanned & Added to Bill: ${matchedProd.product_name}${serialVal ? ` [SL: ${serialVal}]` : ''}`);
+  };
+
+  const handleSendWhatsAppInvoice = () => {
+    const phone = header.mobile_no || selectedCustomer?.mobile || '';
+    const msg = buildWhatsAppInvoiceText({
+      shopName: activeBranchInfo.branch_name || user?.branch || 'HAZI TRADERS',
+      shopPhone: activeBranchInfo.phone || '',
+      invoiceId: header.sales_id || master.nextIds?.sales || 'NEW',
+      date: header.sales_date,
+      customerName: header.cs_name || 'Valued Customer',
+      mobile: phone,
+      items,
+      totalAmount,
+      discountAmount: Number(header.discount_amount || 0),
+      netPayable,
+      paidAmount: Number(header.collection_amount || 0),
+      previousLedger: selectedCustomer ? Number(selectedCustomer.current_balance || 0) : 0,
+      footerNote: activeBranchInfo.invoice_footer || 'Thank you for your business!'
+    });
+    openWhatsAppChat(phone, msg);
+  };
+
   const handleSave = async () => {
     let nextItems = [...items];
     if (line.product_name.trim()) {
@@ -996,14 +1154,16 @@ export function SalesPage() {
   };
 
   const handlePrint = (type = 'invoice') => {
+    const phone = header.mobile_no || selectedCustomer?.mobile || '';
     openPrint({
       title: type === 'challan' ? 'DELIVERY CHALLAN' : 'SALES INVOICE / BILL',
+      whatsappPhone: phone,
       meta: {
         'Invoice ID': header.sales_id || master.nextIds?.sales,
         'Sales Date': header.sales_date,
         'Ref./Bill No.': header.ref_no,
         'Customer Name': header.cs_name,
-        'Mobile No.': header.mobile_no,
+        'Mobile No.': phone,
         'Sales Type': header.sales_type
       },
       columns: type === 'challan'
@@ -1031,6 +1191,36 @@ export function SalesPage() {
     <div className="erp-container">
       <fieldset className="erp-fieldset">
         <legend className="erp-legend">Sales</legend>
+
+        {/* Barcode / Serial Instant Scan Row */}
+        <div className="row g-1 align-items-center mb-1 p-1 rounded" style={{ background: '#e7f1ff', border: '1px solid #b6d4fe' }}>
+          <div className="col-md-2">
+            <label className="erp-label fw-bold text-primary">▣ Barcode / Serial Quick Scan</label>
+          </div>
+          <div className="col-md-5">
+            <input
+              id="SALES_BARCODE_SCAN"
+              className="erp-input"
+              placeholder="Scan Barcode (89010001) or Serial (HMK150-26004) & Press Enter for Instant Billing..."
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSalesBarcodeScan(e.target.value);
+                }
+              }}
+            />
+          </div>
+          <div className="col-md-2">
+            <button id="BTN_SALES_SCAN_ADD" type="button" className="erp-btn w-100 fw-bold" onClick={() => handleSalesBarcodeScan(scanCode)}>
+              Scan &amp; Add Item
+            </button>
+          </div>
+          <div className="col-md-3 text-muted" style={{ fontSize: '11px' }}>
+            Auto-fills Item, Warranty, Price &amp; Adds to Bill
+          </div>
+        </div>
 
         {/* Row 1 */}
         <div className="row g-1 align-items-center mb-1">
@@ -1271,6 +1461,7 @@ export function SalesPage() {
           <button id="MainContent_PRINTVIEW" className="erp-btn" onClick={() => handlePrint('invoice')}>Print Preview</button>
           <button id="CHALLAN_PRINT" className="erp-btn" onClick={() => handlePrint('challan')}>Challan Print</button>
           <button id="MainContent_SMS_SEND" className="erp-btn" onClick={() => notify(`SMS Sent to ${header.cs_name || 'Customer'} (${header.mobile_no || '01818524712'}): Invoice ${header.sales_id || 'NEW'} Amount ${netPayable.toFixed(2)} BDT`)}>SMS Send</button>
+          <button id="WHATSAPP_SEND" className="erp-btn fw-bold" style={{ background: '#dcfce7', borderColor: '#22c55e', color: '#15803d' }} onClick={handleSendWhatsAppInvoice}>WhatsApp Bill</button>
           <button id="BTNNARATION" className="erp-btn" onClick={() => {
             const n = window.prompt('Invoice Narration:', header.narration);
             if (n !== null) setHeader({ ...header, narration: n });
@@ -1762,7 +1953,7 @@ export function MobileSearchPage() {
 
 // 25. DATE_WISE_BILL_SEARCH.aspx — Date Wise Invoice Search
 export function DateWiseBillSearchPage() {
-  const { openPrint } = useErp();
+  const { user, master, openPrint } = useErp();
   const navigate = useNavigate();
   const [date1, setDate1] = useState(getMonthStartStr());
   const [date2, setDate2] = useState(getTodayStr());
@@ -1815,6 +2006,7 @@ export function DateWiseBillSearchPage() {
                 <th>Total Price</th>
                 <th>Approval</th>
                 <th>Print</th>
+                <th>WhatsApp</th>
                 <th>Ledger</th>
                 <th>Edit</th>
               </tr>
@@ -1834,10 +2026,40 @@ export function DateWiseBillSearchPage() {
                   <td><button className="btn btn-success btn-sm py-0 px-2" disabled>Approved</button></td>
                   <td><button className="erp-btn" onClick={() => openPrint({
                     title: `SALES INVOICE — ${r.sales_id}`,
-                    meta: { 'Invoice ID': r.sales_id, 'Date': r.sales_date, 'Customer': r.cs_name, 'Sold By': r.user_name },
+                    whatsappPhone: r.mobile_no || '',
+                    meta: { 'Invoice ID': r.sales_id, 'Date': r.sales_date, 'Customer': r.cs_name, 'Mobile': r.mobile_no || '', 'Sold By': r.user_name },
                     columns: ['Invoice ID', 'Customer Name', 'Sales Date', 'Qty', 'Total Price'],
                     rows: [[r.sales_id, r.cs_name, r.sales_date, r.total_qty, Number(r.net_payable || 0).toFixed(2)]]
                   })}>Print</button></td>
+                  <td>
+                    <button
+                      className="erp-btn fw-bold"
+                      style={{ background: '#dcfce7', borderColor: '#22c55e', color: '#15803d' }}
+                      onClick={() => {
+                        const trader = (master?.traders || []).find(t => t.cs_name === r.cs_name);
+                        const phone = r.mobile_no || trader?.mobile || '';
+                        const activeBranch = (master?.branches || []).find(b => b.branch_name === (user?.branch || 'HAZI TRADERS')) || master?.branches?.[0] || {};
+                        const msg = buildWhatsAppInvoiceText({
+                          shopName: activeBranch.branch_name || user?.branch || 'HAZI TRADERS',
+                          shopPhone: activeBranch.phone || '',
+                          invoiceId: r.sales_id,
+                          date: r.sales_date,
+                          customerName: r.cs_name,
+                          mobile: phone,
+                          items: [],
+                          totalAmount: Number(r.total_amount || r.net_payable || 0),
+                          discountAmount: Number(r.discount_amount || 0),
+                          netPayable: Number(r.net_payable || 0),
+                          paidAmount: Number(r.collection_amount || 0),
+                          previousLedger: Number(trader?.current_balance || 0),
+                          footerNote: activeBranch.invoice_footer || 'Thank you for your business!'
+                        });
+                        openWhatsAppChat(phone, msg);
+                      }}
+                    >
+                      WhatsApp
+                    </button>
+                  </td>
                   <td><button className="erp-btn" onClick={() => navigate('/GI/CS_REPORTS.aspx')}>Ledger</button></td>
                   <td><button className="erp-btn" onClick={() => navigate('/GI/SALES.aspx')}>Edit</button></td>
                 </tr>

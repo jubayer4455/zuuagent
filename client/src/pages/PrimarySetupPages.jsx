@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useErp } from '../context/ErpContext.jsx';
 import AutocompleteInput from '../components/AutocompleteInput.jsx';
+import { openWhatsAppChat, buildWhatsAppDueText } from '../utils/whatsapp.js';
 
 // 1. CSGROUP.aspx — Traders Group
 export function TradersGroupPage() {
@@ -85,7 +86,7 @@ export function TradersGroupPage() {
 
 // 2. CUSTOMERINFORMATION.aspx — Traders Information
 export function TradersInfoPage() {
-  const { master, refreshMaster, notify, openPrint } = useErp();
+  const { user, master, refreshMaster, notify, openPrint } = useErp();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     group_id: '', group_name: '', mpo_id: '', mpo_name: '',
@@ -256,6 +257,26 @@ export function TradersInfoPage() {
           <button id="PRINT_ALL" className="erp-btn" onClick={() => handlePrint('all')}>Print All</button>
           <button id="PRINT_GROUP" className="erp-btn" onClick={() => handlePrint('group')}>Group wise Print</button>
           <button id="PREVIEW" className="erp-btn" onClick={() => handlePrint('all')}>Preview All</button>
+          <button
+            id="WHATSAPP_DUE"
+            className="erp-btn fw-bold"
+            style={{ background: '#dcfce7', borderColor: '#22c55e', color: '#15803d' }}
+            onClick={() => {
+              const matched = (master.traders || []).find(t => t.cs_id === form.cs_id || t.cs_name === form.cs_name);
+              const due = matched ? Number(matched.current_balance || form.opening_balance || 0) : Number(form.opening_balance || 0);
+              const activeBranch = (master?.branches || []).find(b => b.branch_name === (user?.branch || 'HAZI TRADERS')) || master?.branches?.[0] || {};
+              const msg = buildWhatsAppDueText({
+                shopName: activeBranch.branch_name || user?.branch || 'HAZI TRADERS',
+                shopPhone: activeBranch.phone || '',
+                customerName: form.cs_name || 'Valued Customer',
+                dueBalance: due,
+                footerNote: activeBranch.invoice_footer || 'Please clear your due at your earliest convenience. Thank you!'
+              });
+              openWhatsAppChat(form.mobile || form.phone || '', msg);
+            }}
+          >
+            WhatsApp Due Reminder
+          </button>
           <button id="CLEAR" className="erp-btn" onClick={handleClear}>Clear</button>
           <button id="EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>

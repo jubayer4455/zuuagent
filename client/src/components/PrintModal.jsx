@@ -1,8 +1,9 @@
 import React from 'react';
 import { useErp } from '../context/ErpContext.jsx';
+import { openWhatsAppChat } from '../utils/whatsapp.js';
 
 export default function PrintModal() {
-  const { modalDoc, closePrint, session } = useErp();
+  const { modalDoc, closePrint, session, master, notify } = useErp();
   if (!modalDoc) return null;
 
   const {
@@ -12,10 +13,22 @@ export default function PrintModal() {
     columns = [],
     rows = [],
     summary = {},
-    mode = 'report', // 'report' | 'invoice' | 'challan' | 'a5' | 'barcode' | 'qr' | 'pad'
+    mode = 'report',
     excelParams = null,
-    customContent = null
+    customContent = null,
+    whatsappPhone = ''
   } = modalDoc;
+
+  // Lookup Active Shop's custom Invoice Branding (Name, Logo, Address, Phone, Footer)
+  const activeShopName = session?.branchName || 'HAZI TRADERS';
+  const activeShop = master.branches.find(b => b.branch_name === activeShopName) || {
+    branch_name: activeShopName,
+    address: 'Motijheel Commercial Area, Dhaka',
+    phone: '01818524712, 01402338209',
+    email: 'info@hazierp.top',
+    logo_url: '/IMAGE/unisoft.svg',
+    invoice_footer: 'Warranty void if sticker removed or burn/physical damage.'
+  };
 
   const handleDownloadExcel = async () => {
     if (excelParams) {
@@ -35,9 +48,8 @@ export default function PrintModal() {
         return;
       }
     }
-    // Client-side CSV/XLS fallback
     const lines = [
-      ['HAZI TRADERS'],
+      [activeShop.branch_name],
       [title],
       columns,
       ...rows
@@ -61,6 +73,30 @@ export default function PrintModal() {
     a.download = `${String(title).replace(/[^a-zA-Z0-9_-]/g, '_')}.doc`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleWhatsAppShare = () => {
+    const metaLines = Object.entries(meta || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+    const sumLines = Object.entries(summary || {}).map(([k, v]) => `*${k}: ${v}*`).join('\n');
+    const rowPreview = rows.slice(0, 12).map(r => r.join(' | ')).join('\n');
+    const msg = [
+      `*${activeShop.branch_name}*`,
+      `${activeShop.address || 'Dhaka'} | Tel: ${activeShop.phone || '01818524712'}`,
+      `----------------------------`,
+      `*${title}*`,
+      subtitle || '',
+      metaLines,
+      `----------------------------`,
+      rowPreview,
+      `----------------------------`,
+      sumLines,
+      activeShop.invoice_footer || ''
+    ].filter(Boolean).join('\n');
+
+    const phoneFromMeta = whatsappPhone || meta['Mobile No.'] || meta['Mobile'] || '';
+    if (openWhatsAppChat(phoneFromMeta, msg)) {
+      notify('Opened WhatsApp with formatted invoice/report');
+    }
   };
 
   return (
@@ -88,45 +124,64 @@ export default function PrintModal() {
         {/* Top Action Bar */}
         <div className="no-print d-flex justify-content-between align-items-center px-3 py-2 border-bottom" style={{ backgroundColor: '#e9ecef' }}>
           <div className="fw-bold" style={{ fontSize: '16px' }}>
-            Crystal Report / Voucher Viewer — {title}
+            Crystal Report / Voucher Viewer — {title} ({activeShop.branch_name})
           </div>
           <div className="d-flex gap-2">
             <button className="erp-btn" onClick={() => window.print()}>Print Now</button>
+            <button
+              className="erp-btn"
+              style={{ background: '#198754', color: '#fff', borderColor: '#146c43' }}
+              onClick={handleWhatsAppShare}
+            >
+              Send on WhatsApp
+            </button>
             <button className="erp-btn" onClick={handleDownloadExcel}>Export Excel (.xlsx)</button>
             <button className="erp-btn" onClick={handleDownloadWord}>Convert Word (.doc)</button>
             <button className="erp-btn" style={{ background: '#dc3545', color: '#fff', borderColor: '#b02a37' }} onClick={closePrint}>Close [X]</button>
           </div>
         </div>
 
-        {/* Printable Document Body */}
+        {/* Printable Document Body with Shop-Wise Header & Logo */}
         <div id="erp-print-area" style={{ padding: '20px 26px', overflowY: 'auto', flex: 1 }}>
           {mode !== 'pad' && (
-            <div className="text-center border-bottom pb-2 mb-3">
-              <div style={{ fontSize: '23px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-                {session?.branchName || 'HAZI TRADERS'}
+            <div className="border-bottom pb-2 mb-3">
+              <div className="d-flex align-items-center justify-content-center gap-3">
+                {activeShop.logo_url && (
+                  <img
+                    src={activeShop.logo_url}
+                    alt={activeShop.branch_name}
+                    style={{ width: '58px', height: '58px', objectFit: 'contain', borderRadius: '50%', border: '1px solid #dee2e6', padding: '2px' }}
+                  />
+                )}
+                <div className="text-center">
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                    {activeShop.branch_name}
+                  </div>
+                  <div style={{ fontSize: '13.5px' }}>
+                    {activeShop.address || 'Motijheel Commercial Area, Dhaka'} | Mobile: {activeShop.phone || '01818524712, 01402338209'}
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '13.5px' }}>
-                Motijheel Commercial Area, Dhaka | Mobile: 01818524712, 01402338209
+              <div className="text-center mt-1">
+                <div style={{
+                  display: 'inline-block',
+                  padding: '2px 16px',
+                  backgroundColor: '#cfe2ff',
+                  border: '1px solid #9ec5fe',
+                  borderRadius: '3px',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}>
+                  {title}
+                </div>
+                {subtitle && <div className="mt-1 fw-bold" style={{ fontSize: '13.5px', color: '#333' }}>{subtitle}</div>}
               </div>
-              <div style={{
-                display: 'inline-block',
-                marginTop: '4px',
-                padding: '2px 16px',
-                backgroundColor: '#cfe2ff',
-                border: '1px solid #9ec5fe',
-                borderRadius: '3px',
-                fontSize: '16px',
-                fontWeight: 'bold'
-              }}>
-                {title}
-              </div>
-              {subtitle && <div className="mt-1 fw-bold" style={{ fontSize: '13.5px', color: '#333' }}>{subtitle}</div>}
             </div>
           )}
 
           {mode === 'pad' && (
             <div style={{ marginTop: '75px', borderBottom: '1px solid #000', paddingBottom: '6px', marginBottom: '12px' }} className="text-center">
-              <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{title} (Company Letterhead Pad Print)</div>
+              <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{title} ({activeShop.branch_name} Letterhead Pad Print)</div>
             </div>
           )}
 
@@ -187,6 +242,13 @@ export default function PrintModal() {
             </div>
           )}
 
+          {/* Shop-specific Invoice Footer Terms */}
+          {activeShop.invoice_footer && (
+            <div className="mt-3 pt-2 border-top text-center" style={{ fontSize: '12.5px', fontStyle: 'italic', color: '#333' }}>
+              {activeShop.invoice_footer}
+            </div>
+          )}
+
           {/* Signatures Footer */}
           <div className="d-flex justify-content-between mt-5 pt-4" style={{ fontSize: '13px' }}>
             <div style={{ borderTop: '1px solid #000', paddingTop: '3px', minWidth: '140px', textAlign: 'center' }}>
@@ -196,7 +258,7 @@ export default function PrintModal() {
               Prepared By ({session?.userName || 'JUBAYER'})
             </div>
             <div style={{ borderTop: '1px solid #000', paddingTop: '3px', minWidth: '140px', textAlign: 'center' }}>
-              Authorized Signature
+              Authorized Signature ({activeShop.branch_name})
             </div>
           </div>
         </div>

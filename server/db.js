@@ -71,7 +71,9 @@ export function initDatabase() {
       phone TEXT DEFAULT '01818524712, 01402338209',
       email TEXT DEFAULT 'info@hazierp.top',
       manager_name TEXT DEFAULT 'JUBAYER AHMED',
-      status TEXT DEFAULT 'ACTIVE'
+      status TEXT DEFAULT 'ACTIVE',
+      logo_url TEXT DEFAULT '/IMAGE/unisoft.svg',
+      invoice_footer TEXT DEFAULT 'Warranty void if sticker removed or burn/physical damage.'
     );
 
     CREATE TABLE IF NOT EXISTS stores (
@@ -884,6 +886,8 @@ export function initDatabase() {
   try { db.exec(`ALTER TABLE users ADD COLUMN permissions_json TEXT DEFAULT '';`); } catch {}
   try { db.exec(`ALTER TABLE branches ADD COLUMN manager_name TEXT DEFAULT 'JUBAYER AHMED';`); } catch {}
   try { db.exec(`ALTER TABLE branches ADD COLUMN status TEXT DEFAULT 'ACTIVE';`); } catch {}
+  try { db.exec(`ALTER TABLE branches ADD COLUMN logo_url TEXT DEFAULT '/IMAGE/unisoft.svg';`); } catch {}
+  try { db.exec(`ALTER TABLE branches ADD COLUMN invoice_footer TEXT DEFAULT 'Warranty void if sticker removed or burn/physical damage.';`); } catch {}
 }
 
 export function nextId(table, col, prefix, padLen = 3) {
