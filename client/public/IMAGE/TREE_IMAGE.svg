@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="60%" x2="100%" y2="25%">
+      <stop offset="0%" stop-color="#010b26" />
+      <stop offset="45%" stop-color="#033168" />
+      <stop offset="78%" stop-color="#0285a8" />
+      <stop offset="100%" stop-color="#00e1ec" />
+    </linearGradient>
+    <linearGradient id="screenGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6e56cf" stop-opacity="0.88" />
+      <stop offset="50%" stop-color="#2294f2" stop-opacity="0.82" />
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0.85" />
+    </linearGradient>
+    <linearGradient id="laserLine" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff3d00" stop-opacity="0" />
+      <stop offset="35%" stop-color="#ff5252" stop-opacity="0.95" />
+      <stop offset="65%" stop-color="#ffab40" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0" />
+    </linearGradient>
+    <radialGradient id="flare" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+      <stop offset="35%" stop-color="#ff3d00" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#ff1744" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Main Navy to Cyan Background -->
+  <rect width="1440" height="900" fill="url(#bgGrad)" />
+
+  <!-- Ambient Bokeh Circles -->
+  <circle cx="195" cy="520" r="36" fill="#2bd9e8" fill-opacity="0.16" />
+  <circle cx="240" cy="675" r="28" fill="#e91e63" fill-opacity="0.18" />
+  <circle cx="715" cy="240" r="45" fill="#00e5ff" fill-opacity="0.12" />
+  <circle cx="910" cy="595" r="52" fill="#00e5ff" fill-opacity="0.18" />
+  <circle cx="955" cy="610" r="35" fill="#7c4dff" fill-opacity="0.2" />
+  <circle cx="620" cy="530" r="30" fill="#ff4081" fill-opacity="0.22" />
+
+  <!-- Diagonal Laser Light Streaks -->
+  <line x1="75" y1="730" x2="780" y2="380" stroke="url(#laserLine)" stroke-width="2.5" />
+  <line x1="510" y1="540" x2="1080" y2="310" stroke="url(#laserLine)" stroke-width="2.2" />
+
+  <!-- Floating Back Holographic Window -->
+  <g transform="translate(390, 95) skewY(-15) skewX(6)" opacity="0.58">
+    <rect x="0" y="0" width="350" height="220" rx="8" fill="url(#screenGlow)" stroke="#00e5ff" stroke-width="1.5" />
+    <rect x="14" y="16" width="170" height="10" rx="3" fill="#00f2fe" fill-opacity="0.7" />
+    <rect x="14" y="34" width="290" height="6" rx="2" fill="#ffffff" fill-opacity="0.5" />
+    <rect x="14" y="48" width="240" height="6" rx="2" fill="#ffffff" fill-opacity="0.35" />
+    <rect x="14" y="72" width="150" height="120" rx="4" fill="#041c4a" fill-opacity="0.45" />
+    <rect x="176" y="72" width="155" height="120" rx="4" fill="#041c4a" fill-opacity="0.35" />
+  </g>
+
+  <!-- 3D Isometric Laptop Base -->
+  <g transform="translate(275, 480)">
+    <!-- Keyboard Deck Polygon -->
+    <polygon points="10,105 335,-30 565,98 220,265" fill="#041638" stroke="#18c9e8" stroke-width="2.5" />
+    <polygon points="24,104 335,-20 515,78 205,220" fill="#0a275c" stroke="#1e5fa8" stroke-width="1.2" />
+    <!-- Trackpad -->
+    <polygon points="275,180 375,132 425,162 325,212" fill="#073a7a" stroke="#00e5ff" stroke-width="1.2" />
+    <!-- Glowing Keyboard Grid Lines -->
+    <line x1="65" y1="100" x2="345" y2="-10" stroke="#1888c8" stroke-width="1" stroke-opacity="0.55" />
+    <line x1="95" y1="120" x2="378" y2="8" stroke="#1888c8" stroke-width="1" stroke-opacity="0.55" />
+    <line x1="125" y1="140" x2="412" y2="26" stroke="#1888c8" stroke-width="1" stroke-opacity="0.55" />
+    <line x1="158" y1="162" x2="448" y2="45" stroke="#1888c8" stroke-width="1" stroke-opacity="0.55" />
+    <line x1="190" y1="184" x2="482" y2="64" stroke="#1888c8" stroke-width="1" stroke-opacity="0.55" />
+  </g>
+
+  <!-- 3D Laptop Screen -->
+  <g transform="translate(230, 325) skewY(-21) skewX(11)">
+    <rect x="0" y="0" width="375" height="250" rx="7" fill="#06163a" stroke="#19b5fe" stroke-width="3" />
+    <rect x="8" y="8" width="359" height="234" rx="4" fill="url(#screenGlow)" />
+    <!-- Top bar -->
+    <rect x="16" y="16" width="343" height="24" rx="3" fill="#7c4dff" fill-opacity="0.55" />
+    <!-- Chart Cards inside Laptop -->
+    <rect x="16" y="48" width="95" height="90" rx="3" fill="#051c48" fill-opacity="0.65" stroke="#00e5ff" stroke-width="1" />
+    <polyline points="24,116 42,96 58,105 78,76 102,82" fill="none" stroke="#00f2fe" stroke-width="2.5" />
+    <rect x="118" y="48" width="110" height="90" rx="3" fill="#051c48" fill-opacity="0.65" stroke="#00e5ff" stroke-width="1" />
+    <polyline points="126,118 148,88 168,98 192,68 218,74" fill="none" stroke="#00e676" stroke-width="2.5" />
+    <!-- Data Bars -->
+    <rect x="236" y="48" width="122" height="178" rx="3" fill="#051c48" fill-opacity="0.7" />
+    <rect x="246" y="60" width="96" height="7" rx="2" fill="#ff4081" />
+    <rect x="246" y="74" width="78" height="7" rx="2" fill="#00e5ff" />
+    <rect x="246" y="88" width="102" height="7" rx="2" fill="#7c4dff" />
+    <rect x="246" y="102" width="64" height="7" rx="2" fill="#00e676" />
+    <rect x="246" y="116" width="88" height="7" rx="2" fill="#ffab40" />
+    <rect x="246" y="130" width="94" height="7" rx="2" fill="#00e5ff" />
+    <!-- Bottom Panels -->
+    <rect x="16" y="146" width="212" height="80" rx="3" fill="#051c48" fill-opacity="0.65" />
+    <rect x="26" y="158" width="85" height="8" rx="2" fill="#38ef7d" />
+    <rect x="26" y="172" width="175" height="6" rx="2" fill="#ffffff" fill-opacity="0.65" />
+    <rect x="26" y="184" width="155" height="6" rx="2" fill="#ffffff" fill-opacity="0.5" />
+    <rect x="26" y="196" width="165" height="6" rx="2" fill="#ffffff" fill-opacity="0.4" />
+  </g>
+
+  <!-- Floating 3D Tablet -->
+  <g transform="translate(525, 375) skewY(-21) skewX(11)">
+    <rect x="0" y="0" width="245" height="168" rx="8" fill="#051332" stroke="#00e5ff" stroke-width="2.5" />
+    <rect x="7" y="7" width="231" height="154" rx="5" fill="url(#screenGlow)" />
+    <rect x="15" y="15" width="215" height="32" rx="3" fill="#7c4dff" fill-opacity="0.65" />
+    <rect x="15" y="54" width="75" height="52" rx="3" fill="#041942" fill-opacity="0.65" />
+    <rect x="96" y="54" width="134" height="52" rx="3" fill="#041942" fill-opacity="0.65" stroke="#00e5ff" stroke-width="1" />
+    <polyline points="104,92 128,74 152,82 184,62 218,68" fill="none" stroke="#00f2fe" stroke-width="2.5" />
+    <rect x="15" y="112" width="102" height="40" rx="3" fill="#041942" fill-opacity="0.65" />
+    <rect x="124" y="112" width="106" height="40" rx="3" fill="#041942" fill-opacity="0.65" />
+  </g>
+
+  <!-- Floating 3D Smartphone -->
+  <g transform="translate(745, 355) skewY(-21) skewX(11)">
+    <rect x="0" y="0" width="96" height="198" rx="11" fill="#051332" stroke="#00e5ff" stroke-width="2.5" />
+    <rect x="6" y="12" width="84" height="172" rx="5" fill="url(#screenGlow)" />
+    <rect x="12" y="20" width="72" height="36" rx="3" fill="#7c4dff" fill-opacity="0.7" />
+    <rect x="12" y="64" width="33" height="52" rx="3" fill="#041942" fill-opacity="0.65" />
+    <rect x="51" y="64" width="33" height="52" rx="3" fill="#041942" fill-opacity="0.65" />
+    <rect x="12" y="124" width="72" height="50" rx="3" fill="#041942" fill-opacity="0.75" stroke="#00e5ff" stroke-width="1" />
+    <polyline points="18,158 32,144 48,150 64,134 78,140" fill="none" stroke="#00e676" stroke-width="2.2" />
+  </g>
+
+  <!-- Glowing Red/Orange Laser Flares -->
+  <circle cx="280" cy="635" r="14" fill="url(#flare)" />
+  <circle cx="322" cy="614" r="12" fill="url(#flare)" />
+  <circle cx="502" cy="512" r="13" fill="url(#flare)" />
+  <circle cx="545" cy="492" r="11" fill="url(#flare)" />
+  <circle cx="888" cy="392" r="12" fill="url(#flare)" />
+  <circle cx="932" cy="374" r="10" fill="url(#flare)" />
+</svg>

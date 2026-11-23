@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="92%" stop-color="#f7f9fb" />
+      <stop offset="100%" stop-color="#e5eaef" />
+    </radialGradient>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="url(#bgGlow)" stroke="#e2e6ea" stroke-width="3" />
+  <path d="M26 24 L26 62 C26 84 41 96 60 96 C79 96 94 84 94 62 L94 42 L82 42 L82 62 C82 77 72 85 60 85 C48 85 38 77 38 62 L38 24 Z" fill="#18a34a" />
+  <rect x="82" y="24" width="12" height="11" rx="2" fill="#18a34a" />
+  <path d="M44 24 L44 58 C44 69 51 76 60 76 C69 76 76 69 76 58 L76 24 Z" fill="#18a34a" />
+  <path d="M53 56 L53 41 C53 36 56 33 60 33 C64 33 67 36 67 41 L67 56 L62 56 L62 42 C62 40 61 38.5 60 38.5 C59 38.5 58 40 58 42 L58 56 Z" fill="#ffffff" />
+  <text x="60" y="68" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-size="6.5" font-weight="700" fill="#ffffff" letter-spacing="0.4">SOFT</text>
+  <text x="60" y="81" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-size="5.5" font-weight="700" fill="#18a34a" letter-spacing="0.4">TECHNOLOGY</text>
+</svg>
