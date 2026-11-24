@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import zlib from 'zlib';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,48 +14,107 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
 export const DB_PATH = path.join(dataDir, 'hazierp.db');
+export const SEED_GZ_PATH = path.join(__dirname, 'data', 'hazierp_seed.db.gz');
 export const BACKUP_DIR = backupDir;
 export const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zlotgghqdfrbxeuinjjy.supabase.co';
 export const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsb3RnZ2hxZGZyYnhldWluamp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4MDQzMTUsImV4cCI6MjEwNzM4MDMxNX0.-5C5gZzyi595pPdR6SB7eWb2lcchAz2qmXWnNHWaRBg';
 
-let dbInstance;
-try {
-  const sqliteMod = await import('node:sqlite');
-  dbInstance = new sqliteMod.DatabaseSync(DB_PATH);
-  dbInstance.exec('PRAGMA journal_mode = WAL;');
-  dbInstance.exec('PRAGMA foreign_keys = OFF;');
-} catch {
-  const initSqlJs = (await import('sql.js')).default;
-  const SQL = await initSqlJs();
-  const rawDb = fs.existsSync(DB_PATH) ? new SQL.Database(fs.readFileSync(DB_PATH)) : new SQL.Database();
-  dbInstance = {
-    exec(sql) {
-      rawDb.run(sql);
-    },
-    prepare(sql) {
-      return {
-        all(...params) {
-          const stmt = rawDb.prepare(sql);
-          stmt.bind(params);
-          const rows = [];
-          while (stmt.step()) rows.push(stmt.getAsObject());
-          stmt.free();
-          return rows;
-        },
-        get(...params) {
-          const rows = this.all(...params);
-          return rows[0] || undefined;
-        },
-        run(...params) {
-          rawDb.run(sql, params);
-          return { changes: 1 };
-        }
-      };
-    }
-  };
+// Bootstrap from compressed real-data seed if DB_PATH does not exist yet
+if (!fs.existsSync(DB_PATH) && fs.existsSync(SEED_GZ_PATH)) {
+  try {
+    const raw = zlib.gunzipSync(fs.readFileSync(SEED_GZ_PATH));
+    fs.writeFileSync(DB_PATH, raw);
+  } catch (err) {
+    console.error('Seed DB decompression note:', err.message);
+  }
 }
 
-export const db = dbInstance;
+let sqliteMod = null;
+let sqlJsSQL = null;
+let rawSqlJsDb = null;
+let activeDb = null;
+
+async function openDatabaseInstance() {
+  try {
+    if (!sqliteMod) sqliteMod = await import('node:sqlite');
+    const inst = new sqliteMod.DatabaseSync(DB_PATH);
+    inst.exec('PRAGMA journal_mode = WAL;');
+    inst.exec('PRAGMA foreign_keys = OFF;');
+    rawSqlJsDb = null;
+    activeDb = inst;
+  } catch {
+    if (!sqlJsSQL) {
+      const initSqlJs = (await import('sql.js')).default;
+      sqlJsSQL = await initSqlJs();
+    }
+    rawSqlJsDb = fs.existsSync(DB_PATH)
+      ? new sqlJsSQL.Database(fs.readFileSync(DB_PATH))
+      : new sqlJsSQL.Database();
+    activeDb = {
+      exec(sql) {
+        rawSqlJsDb.run(sql);
+      },
+      prepare(sql) {
+        return {
+          all(...params) {
+            const stmt = rawSqlJsDb.prepare(sql);
+            stmt.bind(params);
+            const rows = [];
+            while (stmt.step()) rows.push(stmt.getAsObject());
+            stmt.free();
+            return rows;
+          },
+          get(...params) {
+            const rows = this.all(...params);
+            return rows[0] || undefined;
+          },
+          run(...params) {
+            rawSqlJsDb.run(sql, params);
+            return { changes: 1 };
+          }
+        };
+      }
+    };
+  }
+}
+
+await openDatabaseInstance();
+
+export const db = {
+  exec(sql) {
+    return activeDb.exec(sql);
+  },
+  prepare(sql) {
+    return activeDb.prepare(sql);
+  },
+  close() {
+    if (activeDb && typeof activeDb.close === 'function') activeDb.close();
+  }
+};
+
+export function exportDatabaseBuffer() {
+  if (rawSqlJsDb) {
+    return Buffer.from(rawSqlJsDb.export());
+  }
+  try {
+    activeDb.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch {}
+  return fs.readFileSync(DB_PATH);
+}
+
+export async function reloadDatabaseFromBuffer(sqliteBuffer) {
+  try {
+    if (activeDb && typeof activeDb.close === 'function') activeDb.close();
+  } catch {}
+  for (const ext of ['-wal', '-shm']) {
+    if (fs.existsSync(DB_PATH + ext)) {
+      try { fs.unlinkSync(DB_PATH + ext); } catch {}
+    }
+  }
+  fs.writeFileSync(DB_PATH, sqliteBuffer);
+  await openDatabaseInstance();
+  initDatabase();
+}
 
 export function initDatabase() {
   db.exec(`
@@ -888,6 +948,27 @@ export function initDatabase() {
   try { db.exec(`ALTER TABLE branches ADD COLUMN status TEXT DEFAULT 'ACTIVE';`); } catch {}
   try { db.exec(`ALTER TABLE branches ADD COLUMN logo_url TEXT DEFAULT '/IMAGE/unisoft.svg';`); } catch {}
   try { db.exec(`ALTER TABLE branches ADD COLUMN invoice_footer TEXT DEFAULT 'Warranty void if sticker removed or burn/physical damage.';`); } catch {}
+
+  ensureIndexes();
+}
+
+export function ensureIndexes() {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_stock_bal_lookup ON stock_balances(branch_name, store_name, product_id, stock_type);
+    CREATE INDEX IF NOT EXISTS idx_stock_bal_prod ON stock_balances(product_id);
+    CREATE INDEX IF NOT EXISTS idx_serials_no ON product_serials(serial_no);
+    CREATE INDEX IF NOT EXISTS idx_serials_prod ON product_serials(product_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_cs ON sales(cs_name);
+    CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sales_date);
+    CREATE INDEX IF NOT EXISTS idx_sales_items_sid ON sales_items(sales_id);
+    CREATE INDEX IF NOT EXISTS idx_purchases_cs ON purchases(cs_name);
+    CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(purchase_date);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_pid ON purchase_items(purchase_id);
+    CREATE INDEX IF NOT EXISTS idx_collections_cs ON collections(cs_name);
+    CREATE INDEX IF NOT EXISTS idx_payments_cs ON payments(cs_name);
+    CREATE INDEX IF NOT EXISTS idx_branch_prices_prod ON branch_prices(branch_name, product_id);
+    CREATE INDEX IF NOT EXISTS idx_transfer_items_tid ON stock_transfer_items(transfer_id);
+  `);
 }
 
 export function nextId(table, col, prefix, padLen = 3) {

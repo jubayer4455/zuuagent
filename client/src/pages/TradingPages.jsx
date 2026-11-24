@@ -258,9 +258,18 @@ export function PurchasePage() {
             />
           </div>
           <div className="col-md-2">
-            <button id="PU_ID_SEARCH" className="erp-btn w-100" onClick={() => {
-              const found = purchases.find(p => p.purchase_id === header.search_purchase_id) || purchases[0];
+            <button id="PU_ID_SEARCH" className="erp-btn w-100" onClick={async () => {
+              let found = purchases.find(p => p.purchase_id === header.search_purchase_id);
+              if (!found && header.search_purchase_id.trim()) {
+                const res = await fetch(`/api/trading/purchases?q=${encodeURIComponent(header.search_purchase_id.trim())}&limit=20`);
+                if (res.ok) {
+                  const d = await res.json();
+                  found = (d.list || []).find(p => p.purchase_id === header.search_purchase_id.trim()) || d.list?.[0];
+                }
+              }
+              if (!found) found = purchases[0];
               if (found) loadRecord(found);
+              else notify('Purchase ID not found', 'error');
             }}>Search</button>
           </div>
         </div>
@@ -1250,9 +1259,18 @@ export function SalesPage() {
             />
           </div>
           <div className="col-md-1">
-            <button id="PU_ID_SEARCH" className="erp-btn w-100" onClick={() => {
-              const found = salesList.find(s => s.sales_id === header.search_sales_id) || salesList[0];
+            <button id="PU_ID_SEARCH" className="erp-btn w-100" onClick={async () => {
+              let found = salesList.find(s => s.sales_id === header.search_sales_id);
+              if (!found && header.search_sales_id.trim()) {
+                const res = await fetch(`/api/trading/sales?q=${encodeURIComponent(header.search_sales_id.trim())}&limit=20`);
+                if (res.ok) {
+                  const d = await res.json();
+                  found = (d.list || []).find(s => s.sales_id === header.search_sales_id.trim()) || d.list?.[0];
+                }
+              }
+              if (!found) found = salesList[0];
               if (found) loadInvoice(found);
+              else notify('Sales ID not found', 'error');
             }}>Search.</button>
           </div>
         </div>

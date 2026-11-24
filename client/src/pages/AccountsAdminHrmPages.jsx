@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useErp, getTodayStr } from '../context/ErpContext.jsx';
 import AutocompleteInput from '../components/AutocompleteInput.jsx';
 import { MENU_TREE, ALL_ROUTES_COUNT } from '../components/Layout.jsx';
+import { scanBakFile, uploadMappedBakToServer } from '../utils/bakRestore.js';
 
 const ACCOUNT_GROUPS = [
   { id: 'AG01', name: 'CAPITAL ACCOUNT' },
@@ -924,6 +925,14 @@ export function UserEntryPage() {
             </button>
           )}
           <button type="button" id="MainContent_CLEAR" className="erp-btn" onClick={() => setForm({ user_id: '', user_name: '', father_name: '', mother_name: '', address: '', email: '', mobile: '', opt_mobile: '', password: '', repassword: '', new_password: '', permission_type: 'U', operate_company: 'HAZI TRADERS', active: 'Y' })}>Clear</button>
+          <button
+            type="button"
+            className="erp-btn fw-bold"
+            style={{ background: '#e7f1ff', borderColor: '#0d6efd', color: '#0b5ed7' }}
+            onClick={() => navigate('/GI/DATABASEBACKUP.aspx')}
+          >
+            Upload Old Site .Bak Data
+          </button>
           <button type="button" id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
 
@@ -1097,15 +1106,39 @@ export function UserEntryPage() {
   );
 }
 
-// 15. DATABASEBACKUP.aspx — Data Backup
+// 15. DATABASEBACKUP.aspx — Data Backup & Main Admin .Bak Data Upload/Restore
 export function DatabaseBackupPage() {
-  const { notify } = useErp();
+  const { session, notify, refreshMaster } = useErp();
   const navigate = useNavigate();
   const [statusMsg, setStatusMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [dbStats, setDbStats] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [scanResult, setScanResult] = useState(null);
+  const [includeTransactions, setIncludeTransactions] = useState(true);
+  const [preserveBranding, setPreserveBranding] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState({ pct: 0, text: '' });
+
+  const isMainAdmin =
+    String(session?.userId || '').toLowerCase() === 'jubayer' ||
+    session?.permissionType === 'A' ||
+    Boolean(session?.permissions?.actions?.manageAdmins);
+
+  const loadDbStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/db-stats');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) setDbStats(data.stats);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
-    document.title = 'Data Backup';
-  }, []);
+    document.title = 'Data Backup & .Bak Restore';
+    loadDbStats();
+  }, [loadDbStats]);
 
   const handleServerBackup = async () => {
     const res = await fetch('/api/admin/backup', { method: 'POST' });
@@ -1131,18 +1164,225 @@ export function DatabaseBackupPage() {
     }
   };
 
+  const handleScanBak = async () => {
+    if (!selectedFile) return notify('Please select a .Bak backup file first!', 'error');
+    setBusy(true);
+    setErrorMsg('');
+    setStatusMsg('');
+    setScanResult(null);
+    try {
+      const res = await scanBakFile(selectedFile, (pct, text) => {
+        setProgress({ pct, text });
+      });
+      setScanResult(res);
+      notify(`Scanned ${res.fileName}: ${res.summary.products} Products, ${res.summary.traders} Traders, ${res.summary.sales} Sales ready to upload!`);
+    } catch (err) {
+      setErrorMsg(`Scan failed: ${err.message}`);
+      notify(`Scan failed: ${err.message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUploadBakToLive = async () => {
+    if (!scanResult?.mapped) return notify('Please scan the .Bak file first!', 'error');
+    const ok = window.confirm(
+      `This will replace old/demo data with:\n` +
+      `• ${scanResult.summary.products} Products & ${scanResult.summary.product_serials} Stock Serials\n` +
+      `• ${scanResult.summary.traders} Customers & Suppliers\n` +
+      (includeTransactions ? `• ${scanResult.summary.sales} Sales, ${scanResult.summary.purchases} Purchases, ${scanResult.summary.collections} Collections, ${scanResult.summary.payments} Payments\n` : `• Master Data & Current Stock Only\n`) +
+      `\nYour Main Admin (jubayer) login will stay active. Continue?`
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    setErrorMsg('');
+    setStatusMsg('');
+    try {
+      const res = await uploadMappedBakToServer(
+        scanResult.mapped,
+        {
+          fileName: scanResult.fileName,
+          includeTransactions,
+          preserveBranding
+        },
+        (pct, text) => setProgress({ pct, text })
+      );
+      setStatusMsg(`${res.message}${res.syncedToSupabase ? ' (Synced to Supabase Cloud ✓)' : ''}`);
+      notify(res.message);
+      await loadDbStats();
+      await refreshMaster();
+    } catch (err) {
+      setErrorMsg(`Upload failed: ${err.message}`);
+      notify(`Upload failed: ${err.message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="erp-container erp-container-narrow">
+    <div className="erp-container">
       <fieldset className="erp-fieldset mb-2">
         <legend className="erp-legend">Data Backup</legend>
-        <div className="d-flex gap-2 my-2">
+        <div className="d-flex flex-wrap gap-2 my-2 align-items-center">
           <button id="MainContent_SAVE" className="erp-btn" onClick={handleServerBackup}>Server Backup</button>
           <button id="MainContent_NEW" className="erp-btn" onClick={handleClientBackup}>Client Backup</button>
           <button id="MainContent_NETTEST" className="erp-btn" onClick={handleNetTest}>Net Test</button>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
+        {dbStats && (
+          <div className="row g-1 mt-1 mb-1">
+            {[
+              ['Products', dbStats.products],
+              ['Traders (C/S)', dbStats.traders],
+              ['Brands', dbStats.brands],
+              ['Groups', dbStats.product_groups],
+              ['In-Stock Serials', dbStats.product_serials],
+              ['Sales Invoices', dbStats.sales],
+              ['Purchases', dbStats.purchases],
+              ['Collections', dbStats.collections],
+              ['Payments', dbStats.payments],
+              ['Journals', dbStats.journal_vouchers]
+            ].map(([label, val]) => (
+              <div key={label} className="col-md-2 col-4">
+                <div className="border rounded px-2 py-1 text-center" style={{ background: '#f8f9fa', fontSize: '12px' }}>
+                  <div className="text-muted">{label}</div>
+                  <div className="fw-bold text-primary" style={{ fontSize: '14px' }}>{Number(val || 0).toLocaleString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {statusMsg && <div className="alert alert-success py-1 px-2 mt-2 mb-0 fw-bold">{statusMsg}</div>}
+        {errorMsg && <div className="alert alert-danger py-1 px-2 mt-2 mb-0 fw-bold">{errorMsg}</div>}
       </fieldset>
+
+      {isMainAdmin && (
+        <fieldset className="erp-fieldset mb-2">
+          <legend className="erp-legend" style={{ color: '#0b5ed7' }}>
+            Main Admin — Upload Old Site Backup (.Bak) &amp; Auto-Update All Data
+          </legend>
+          <div className="mb-2" style={{ fontSize: '12.5px', color: '#333' }}>
+            Select any SQL Server <code>.Bak</code> backup file exported from your old site (<code>hazierp.top</code>). The system will decode all products, stock, serials, customers, suppliers, sales, purchases &amp; accounts directly in your browser and update the entire live site + Supabase cloud automatically.
+          </div>
+
+          <div className="row g-2 align-items-center mb-2">
+            <div className="col-md-5">
+              <input
+                id="BAK_FILE_INPUT"
+                type="file"
+                accept=".bak,.Bak,.BAK"
+                className="form-control form-control-sm"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  setSelectedFile(f);
+                  setScanResult(null);
+                  setErrorMsg('');
+                  setProgress({ pct: 0, text: '' });
+                }}
+              />
+            </div>
+            <div className="col-md-7 d-flex flex-wrap gap-2">
+              <button
+                id="BTN_SCAN_BAK"
+                type="button"
+                className="erp-btn fw-bold"
+                disabled={busy || !selectedFile}
+                onClick={handleScanBak}
+              >
+                1. Scan &amp; Preview .Bak File
+              </button>
+              <button
+                id="BTN_UPLOAD_BAK"
+                type="button"
+                className="erp-btn fw-bold"
+                style={{
+                  background: scanResult ? '#dcfce7' : undefined,
+                  borderColor: scanResult ? '#22c55e' : undefined,
+                  color: scanResult ? '#15803d' : undefined
+                }}
+                disabled={busy || !scanResult}
+                onClick={handleUploadBakToLive}
+              >
+                2. Upload &amp; Update All Live Data
+              </button>
+            </div>
+          </div>
+
+          <div className="d-flex flex-wrap gap-3 mb-2">
+            <label className="erp-label d-flex align-items-center gap-1" style={{ cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={includeTransactions}
+                disabled={busy}
+                onChange={(e) => setIncludeTransactions(e.target.checked)}
+              />
+              Include Full History (Sales, Purchases, Collections, Payments, Journals, Transfers)
+            </label>
+            <label className="erp-label d-flex align-items-center gap-1" style={{ cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={preserveBranding}
+                disabled={busy}
+                onChange={(e) => setPreserveBranding(e.target.checked)}
+              />
+              Keep Custom Shop Logos &amp; Invoice Footers
+            </label>
+          </div>
+
+          {(busy || progress.pct > 0) && (
+            <div className="mb-2">
+              <div className="d-flex justify-content-between mb-1" style={{ fontSize: '12px' }}>
+                <span className="fw-bold text-primary">{progress.text}</span>
+                <span className="fw-bold">{progress.pct}%</span>
+              </div>
+              <div className="progress" style={{ height: '14px' }}>
+                <div
+                  className={`progress-bar ${busy ? 'progress-bar-striped progress-bar-animated' : 'bg-success'}`}
+                  style={{ width: `${progress.pct}%`, fontSize: '11px' }}
+                >
+                  {progress.pct}%
+                </div>
+              </div>
+            </div>
+          )}
+
+          {scanResult && (
+            <div className="erp-grid-box mt-2" style={{ minHeight: 'auto', maxHeight: '220px' }}>
+              <table className="erp-table">
+                <thead>
+                  <tr>
+                    <th>Backup File</th>
+                    <th>Products</th>
+                    <th>Traders</th>
+                    <th>Brands / Groups</th>
+                    <th>Stock Serials</th>
+                    <th>Sales (+Items)</th>
+                    <th>Purchases (+Items)</th>
+                    <th>Collections / Payments</th>
+                    <th>Journals / Transfers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="fw-bold">{scanResult.fileName} ({scanResult.fileSizeMB} MB)</td>
+                    <td className="fw-bold text-primary">{scanResult.summary.products.toLocaleString()}</td>
+                    <td className="fw-bold">{scanResult.summary.traders.toLocaleString()}</td>
+                    <td>{scanResult.summary.brands} / {scanResult.summary.product_groups}</td>
+                    <td>{scanResult.summary.product_serials.toLocaleString()}</td>
+                    <td>{scanResult.summary.sales.toLocaleString()} ({scanResult.summary.sales_items.toLocaleString()})</td>
+                    <td>{scanResult.summary.purchases.toLocaleString()} ({scanResult.summary.purchase_items.toLocaleString()})</td>
+                    <td>{scanResult.summary.collections.toLocaleString()} / {scanResult.summary.payments.toLocaleString()}</td>
+                    <td>{scanResult.summary.journal_vouchers.toLocaleString()} / {scanResult.summary.stock_transfers.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </fieldset>
+      )}
+
       <fieldset className="erp-fieldset">
         <legend className="erp-legend" style={{ color: '#dc3545' }}>Important Notice</legend>
         <div className="fw-bold" style={{ fontSize: '15px', color: '#0b5ed7' }}>

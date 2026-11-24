@@ -6,8 +6,9 @@ import * as XLSX from 'xlsx';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import zlib from 'zlib';
 import { fileURLToPath } from 'url';
-import { db, DB_PATH, BACKUP_DIR, initDatabase, nextId, adjustStock, getStockQty, logModification } from './db.js';
+import { db, DB_PATH, SEED_GZ_PATH, BACKUP_DIR, initDatabase, ensureIndexes, exportDatabaseBuffer, nextId, adjustStock, getStockQty, logModification } from './db.js';
 import { seedDatabase } from './seed.js';
 import { generateReportData, inDateRange, matchFilter } from './reports.js';
 import { hydrateFromSupabase, pushSnapshotToSupabase } from './supabaseSync.js';
@@ -31,7 +32,13 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 // Hydrate from Supabase on cold start & sync to Supabase after mutations
 app.use(async (req, res, next) => {
   await hydrateFromSupabase();
-  if (req.method === 'POST' && req.path.startsWith('/api/') && !req.path.startsWith('/api/reports/')) {
+  if (
+    req.method === 'POST' &&
+    req.path.startsWith('/api/') &&
+    !req.path.startsWith('/api/reports/') &&
+    !req.path.startsWith('/api/admin/restore-bak/') &&
+    !req.path.startsWith('/api/auth/')
+  ) {
     res.on('finish', () => {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         pushSnapshotToSupabase().catch(() => {});
@@ -194,17 +201,60 @@ app.get('/api/master/all', (req, res) => {
   const productGroups = db.prepare(`SELECT * FROM product_groups ORDER BY group_id`).all();
   const brands = db.prepare(`SELECT * FROM brands ORDER BY brand_id`).all();
   const colors = db.prepare(`SELECT * FROM colors ORDER BY color_id`).all();
-  const products = db.prepare(`SELECT * FROM products ORDER BY product_id`).all().map(p => ({
-    ...p,
-    stock_qty: getStockQty(branch, 'SHOW ROOM', p.product_id, 'COMMERCIAL'),
-    rma_stock_qty: getStockQty(branch, 'SHOW ROOM', p.product_id, 'RMA')
-  }));
-  const branchPrices = db.prepare(`SELECT * FROM branch_prices ORDER BY id`).all();
+
+  // Single-query bulk stock aggregation (fast for 2,700+ products!)
+  const commStockMap = new Map();
+  const rmaStockMap = new Map();
+  for (const r of db.prepare(`
+    SELECT product_id, stock_type, COALESCE(SUM(qty), 0) AS total
+    FROM stock_balances
+    WHERE branch_name = ?
+    GROUP BY product_id, stock_type
+  `).all(branch)) {
+    if (r.stock_type === 'RMA') rmaStockMap.set(r.product_id, Number(r.total || 0));
+    else commStockMap.set(r.product_id, (commStockMap.get(r.product_id) || 0) + Number(r.total || 0));
+  }
+
+  const products = db.prepare(`SELECT * FROM products ORDER BY product_id`).all().map(p => {
+    const out = {
+      product_id: p.product_id,
+      product_name: p.product_name,
+      category_id: p.category_id,
+      category_name: p.category_name,
+      group_id: p.group_id,
+      group_name: p.group_name,
+      brand_id: p.brand_id,
+      brand_name: p.brand_name,
+      barcode_id: p.barcode_id,
+      description: p.description,
+      serial_item: p.serial_item,
+      inventory_item: p.inventory_item,
+      purchase_price: p.purchase_price,
+      sales_price: p.sales_price,
+      unit: p.unit,
+      wholesale_price: p.wholesale_price,
+      dealer_price: p.dealer_price,
+      warranty: p.warranty,
+      active: p.active,
+      stock_qty: commStockMap.get(p.product_id) || 0,
+      rma_stock_qty: rmaStockMap.get(p.product_id) || 0
+    };
+    if (p.discount) out.discount = p.discount;
+    if (p.vat) out.vat = p.vat;
+    if (p.reorder_level) out.reorder_level = p.reorder_level;
+    if (p.red_level) out.red_level = p.red_level;
+    if (p.color) out.color = p.color;
+    if (p.location) out.location = p.location;
+    if (p.size) out.size = p.size;
+    if (p.image_url) out.image_url = p.image_url;
+    return out;
+  });
+  const branchPrices = db.prepare(`SELECT * FROM branch_prices WHERE branch_name = ? ORDER BY id LIMIT 300`).all(branch);
   const accountSubGroups = db.prepare(`SELECT * FROM account_sub_groups ORDER BY sub_group_id`).all();
   const accountLedgers = db.prepare(`SELECT * FROM account_ledgers ORDER BY accounts_id`).all();
   const banks = db.prepare(`SELECT * FROM banks ORDER BY bank_id`).all();
   const bankAccounts = db.prepare(`SELECT * FROM bank_accounts ORDER BY bk_br_id`).all();
-  const chequeBooks = db.prepare(`SELECT * FROM cheque_books ORDER BY id DESC`).all();
+  const chequeBooks = db.prepare(`SELECT * FROM cheque_books ORDER BY id DESC LIMIT 200`).all();
   const employees = db.prepare(`SELECT * FROM employees ORDER BY employee_id`).all();
   const users = db.prepare(`SELECT user_id, user_name, password, father_name, mother_name, address, email, mobile, opt_mobile, permission_type, operate_company, active, permissions_json FROM users ORDER BY user_name`).all().map(u => ({
     ...u,
@@ -216,20 +266,21 @@ app.get('/api/master/all', (req, res) => {
   const problems = db.prepare(`SELECT * FROM problems ORDER BY problem_id`).all();
   const stores = db.prepare(`SELECT * FROM stores`).all();
   const branches = db.prepare(`SELECT * FROM branches`).all();
-  const serials = db.prepare(`SELECT * FROM product_serials ORDER BY id DESC`).all();
+  const serials = db.prepare(`SELECT serial_no, product_id, product_name, status, branch_name, store_name, unit_price FROM product_serials WHERE status = 'IN_STOCK' ORDER BY id DESC LIMIT 3500`).all();
 
-  // Compute trader live ledger balances
+  // Bulk-compute trader live ledger balances in 4 fast GROUP BY queries
+  const salesSumMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(net_payable), 0) AS s FROM sales GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.s || 0)]));
+  const collSumMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(amount), 0) AS s FROM collections GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.s || 0)]));
+  const purSumMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(net_payable), 0) AS s FROM purchases GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.s || 0)]));
+  const paySumMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(amount), 0) AS s FROM payments GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.s || 0)]));
+
   const traderBalances = {};
   for (const t of traders) {
     let bal = Number(t.opening_balance || 0);
     if (t.trader_type === 'C') {
-      const sSum = db.prepare(`SELECT COALESCE(SUM(net_payable), 0) AS s FROM sales WHERE cs_name = ?`).get(t.cs_name).s;
-      const cSum = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM collections WHERE cs_name = ?`).get(t.cs_name).s;
-      bal = bal + sSum - cSum;
+      bal = bal + (salesSumMap.get(t.cs_name) || 0) - (collSumMap.get(t.cs_name) || 0);
     } else {
-      const pSum = db.prepare(`SELECT COALESCE(SUM(net_payable), 0) AS s FROM purchases WHERE cs_name = ?`).get(t.cs_name).s;
-      const pySum = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE cs_name = ?`).get(t.cs_name).s;
-      bal = bal + pSum - pySum;
+      bal = bal + (purSumMap.get(t.cs_name) || 0) - (paySumMap.get(t.cs_name) || 0);
     }
     traderBalances[t.cs_name] = bal;
   }
@@ -738,10 +789,14 @@ app.post('/api/setup/problem', (req, res) => {
 
 // ==================== TRADING: PURCHASE, PURCHASE RETURN, QUOTATION, SALES, SALES RETURN ====================
 app.get('/api/trading/purchases', (req, res) => {
-  const list = db.prepare(`SELECT * FROM purchases ORDER BY purchase_id DESC`).all().map(p => ({
-    ...p,
-    items: db.prepare(`SELECT * FROM purchase_items WHERE purchase_id = ?`).all(p.purchase_id)
-  }));
+  const { q = '', limit = 150 } = req.query;
+  const lim = Math.min(500, Math.max(10, Number(limit) || 150));
+  const term = String(q).trim();
+  const headers = term
+    ? db.prepare(`SELECT * FROM purchases WHERE purchase_id LIKE ? OR cs_name LIKE ? ORDER BY purchase_id DESC LIMIT ?`).all(`%${term}%`, `%${term}%`, lim)
+    : db.prepare(`SELECT * FROM purchases ORDER BY purchase_id DESC LIMIT ?`).all(lim);
+  const itemStmt = db.prepare(`SELECT * FROM purchase_items WHERE purchase_id = ?`);
+  const list = headers.map(p => ({ ...p, items: itemStmt.all(p.purchase_id) }));
   res.json({ list });
 });
 
@@ -890,10 +945,14 @@ app.post('/api/trading/quotations', (req, res) => {
 });
 
 app.get('/api/trading/sales', (req, res) => {
-  const list = db.prepare(`SELECT * FROM sales ORDER BY sales_id DESC`).all().map(s => ({
-    ...s,
-    items: db.prepare(`SELECT * FROM sales_items WHERE sales_id = ?`).all(s.sales_id)
-  }));
+  const { q = '', limit = 150 } = req.query;
+  const lim = Math.min(500, Math.max(10, Number(limit) || 150));
+  const term = String(q).trim();
+  const headers = term
+    ? db.prepare(`SELECT * FROM sales WHERE sales_id LIKE ? OR cs_name LIKE ? OR mobile_no LIKE ? ORDER BY sales_id DESC LIMIT ?`).all(`%${term}%`, `%${term}%`, `%${term}%`, lim)
+    : db.prepare(`SELECT * FROM sales ORDER BY sales_id DESC LIMIT ?`).all(lim);
+  const itemStmt = db.prepare(`SELECT * FROM sales_items WHERE sales_id = ?`);
+  const list = headers.map(s => ({ ...s, items: itemStmt.all(s.sales_id) }));
   res.json({ list });
 });
 
@@ -1011,51 +1070,87 @@ app.post('/api/trading/sales-returns', (req, res) => {
 // ==================== TRADING SEARCHES ====================
 app.get('/api/trading/serial-search', (req, res) => {
   const { q = '', mode = 'exact' } = req.query;
-  const term = String(q).trim().toLowerCase();
-  const all = db.prepare(`SELECT * FROM serial_history ORDER BY id DESC`).all();
-  const rows = !term || mode === 'all'
-    ? all
-    : all.filter(r => {
-        const s = String(r.serial_no || '').toLowerCase();
-        if (mode === 'first') return s.startsWith(term);
-        if (mode === 'last') return s.endsWith(term);
-        return s.includes(term);
-      });
-  res.json({ rows });
+  const term = String(q).trim();
+  const pattern = !term || mode === 'all'
+    ? '%'
+    : mode === 'first'
+    ? `${term}%`
+    : mode === 'last'
+    ? `%${term}`
+    : `%${term}%`;
+
+  const histRows = db.prepare(`SELECT * FROM serial_history WHERE serial_no LIKE ? ORDER BY id DESC LIMIT 200`).all(pattern);
+  const stockRows = db.prepare(`
+    SELECT
+      'STOCK_IN' AS transaction_type,
+      purchase_id AS transaction_id,
+      purchase_date AS transaction_date,
+      COALESCE(NULLIF(supplier_name, ''), branch_name) AS cs_name,
+      product_group,
+      product_name,
+      serial_no,
+      warranty,
+      store_name || ' (' || status || ')' AS narration
+    FROM product_serials
+    WHERE serial_no LIKE ?
+    ORDER BY id DESC
+    LIMIT 200
+  `).all(pattern);
+  const saleRows = term ? db.prepare(`
+    SELECT
+      'SALES' AS transaction_type,
+      si.sales_id AS transaction_id,
+      s.sales_date AS transaction_date,
+      s.cs_name,
+      si.product_group,
+      si.product_name,
+      si.serial_no,
+      si.warranty,
+      s.narration
+    FROM sales_items si
+    JOIN sales s ON s.sales_id = si.sales_id
+    WHERE si.serial_no != '' AND si.serial_no LIKE ?
+    ORDER BY si.id DESC
+    LIMIT 150
+  `).all(pattern) : [];
+  res.json({ rows: [...histRows, ...saleRows, ...stockRows].slice(0, 300) });
 });
 
 app.get('/api/trading/mobile-search', (req, res) => {
   const { mobile = '' } = req.query;
-  const term = String(mobile).trim().toLowerCase();
-  const salesList = db.prepare(`
-    SELECT s.*, COALESCE(SUM(si.qty), 0) AS total_qty
-    FROM sales s
-    LEFT JOIN sales_items si ON s.sales_id = si.sales_id
-    GROUP BY s.sales_id
-    ORDER BY s.sales_id DESC
-  `).all().filter(s => !term || String(s.mobile_no || '').toLowerCase().includes(term) || String(s.cs_name || '').toLowerCase().includes(term));
-  res.json({ rows: salesList });
+  const term = String(mobile).trim();
+  const rows = term
+    ? db.prepare(`
+        SELECT s.*, COALESCE((SELECT SUM(qty) FROM sales_items si WHERE si.sales_id = s.sales_id), 0) AS total_qty
+        FROM sales s
+        WHERE s.mobile_no LIKE ? OR s.cs_name LIKE ? OR s.sales_id LIKE ?
+        ORDER BY s.sales_id DESC
+        LIMIT 300
+      `).all(`%${term}%`, `%${term}%`, `%${term}%`)
+    : db.prepare(`
+        SELECT s.*, COALESCE((SELECT SUM(qty) FROM sales_items si WHERE si.sales_id = s.sales_id), 0) AS total_qty
+        FROM sales s
+        ORDER BY s.sales_id DESC
+        LIMIT 150
+      `).all();
+  res.json({ rows });
 });
 
 app.get('/api/trading/date-wise-bills', (req, res) => {
   const { date1 = '', date2 = '' } = req.query;
-  const rows = db.prepare(`
-    SELECT s.*, COALESCE(SUM(si.qty), 0) AS total_qty
-    FROM sales s
-    LEFT JOIN sales_items si ON s.sales_id = si.sales_id
-    GROUP BY s.sales_id
-    ORDER BY s.sales_id DESC
-  `).all().filter(s => inDateRange(s.sales_date, date1, date2));
+  const allSales = db.prepare(`SELECT * FROM sales ORDER BY sales_id DESC`).all();
+  const filtered = allSales.filter(s => inDateRange(s.sales_date, date1, date2)).slice(0, 400);
+  const qtyStmt = db.prepare(`SELECT COALESCE(SUM(qty), 0) AS q FROM sales_items WHERE sales_id = ?`);
+  const rows = filtered.map(s => ({ ...s, total_qty: qtyStmt.get(s.sales_id)?.q || 0 }));
   res.json({ rows });
 });
 
 // ==================== STOCK TRANSFERS ====================
 app.get('/api/transfer/list', (req, res) => {
   const { mode } = req.query;
-  const list = db.prepare(`SELECT * FROM stock_transfers ${mode ? 'WHERE transfer_mode = ?' : ''} ORDER BY transfer_id DESC`).all(...(mode ? [mode] : [])).map(t => ({
-    ...t,
-    items: db.prepare(`SELECT * FROM stock_transfer_items WHERE transfer_id = ?`).all(t.transfer_id)
-  }));
+  const headers = db.prepare(`SELECT * FROM stock_transfers ${mode ? 'WHERE transfer_mode = ?' : ''} ORDER BY transfer_id DESC LIMIT 150`).all(...(mode ? [mode] : []));
+  const itemStmt = db.prepare(`SELECT * FROM stock_transfer_items WHERE transfer_id = ?`);
+  const list = headers.map(t => ({ ...t, items: itemStmt.all(t.transfer_id) }));
   res.json({ list });
 });
 
@@ -1301,13 +1396,13 @@ app.post('/api/servicing/bills', (req, res) => {
 
 // ==================== ACCOUNTS MODULE ====================
 app.get('/api/accounts/all', (req, res) => {
-  const payments = db.prepare(`SELECT * FROM payments ORDER BY payment_id DESC`).all();
-  const collections = db.prepare(`SELECT * FROM collections ORDER BY collection_id DESC`).all();
-  const bankTransactions = db.prepare(`SELECT * FROM bank_transactions ORDER BY bank_tr_id DESC`).all();
-  const journalVouchers = db.prepare(`SELECT * FROM journal_vouchers ORDER BY voucher_id DESC`).all();
-  const balanceTransfers = db.prepare(`SELECT * FROM balance_transfers ORDER BY transfer_id DESC`).all();
-  const salaryProcesses = db.prepare(`SELECT * FROM salary_processes ORDER BY id DESC`).all();
-  const waitingCheques = db.prepare(`SELECT * FROM cheque_books WHERE status IN ('WAITING_FOR_HONOR', 'WAITING_FOR_DEPOSIT') ORDER BY id DESC`).all();
+  const payments = db.prepare(`SELECT * FROM payments ORDER BY payment_id DESC LIMIT 200`).all();
+  const collections = db.prepare(`SELECT * FROM collections ORDER BY collection_id DESC LIMIT 200`).all();
+  const bankTransactions = db.prepare(`SELECT * FROM bank_transactions ORDER BY bank_tr_id DESC LIMIT 200`).all();
+  const journalVouchers = db.prepare(`SELECT * FROM journal_vouchers ORDER BY voucher_id DESC LIMIT 200`).all();
+  const balanceTransfers = db.prepare(`SELECT * FROM balance_transfers ORDER BY transfer_id DESC LIMIT 200`).all();
+  const salaryProcesses = db.prepare(`SELECT * FROM salary_processes ORDER BY id DESC LIMIT 200`).all();
+  const waitingCheques = db.prepare(`SELECT * FROM cheque_books WHERE status IN ('WAITING_FOR_HONOR', 'WAITING_FOR_DEPOSIT') ORDER BY id DESC LIMIT 200`).all();
   res.json({ payments, collections, bankTransactions, journalVouchers, balanceTransfers, salaryProcesses, waitingCheques });
 });
 
@@ -1513,26 +1608,28 @@ app.get('/api/admin/daily-business', (req, res) => {
   const sumPayment = payments.reduce((s, r) => s + Number(r.amount || 0), 0);
   const sumExpense = expenses.reduce((s, r) => s + Number(r.dr_amount || 0), 0);
 
-  // Stock Valuation
-  const prods = db.prepare(`SELECT * FROM products`).all();
-  let stockValue = 0;
-  for (const p of prods) {
-    const qty = db.prepare(`SELECT COALESCE(SUM(qty), 0) AS q FROM stock_balances WHERE product_id = ? AND stock_type = 'COMMERCIAL'`).get(p.product_id).q;
-    stockValue += Number(qty || 0) * Number(p.purchase_price || 0);
-  }
+  // Stock Valuation (fast single JOIN query)
+  const stockValRow = db.prepare(`
+    SELECT COALESCE(SUM(sb.qty * p.purchase_price), 0) AS val
+    FROM stock_balances sb
+    JOIN products p ON p.product_id = sb.product_id
+    WHERE sb.stock_type = 'COMMERCIAL'
+  `).get();
+  const stockValue = Number(stockValRow?.val || 0);
 
-  // Receivables & Payables
-  const traders = db.prepare(`SELECT * FROM traders`).all();
+  // Receivables & Payables (4 fast GROUP BY queries)
+  const salesMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(net_payable), 0) AS v FROM sales GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.v || 0)]));
+  const collMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(amount), 0) AS v FROM collections GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.v || 0)]));
+  const purMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(net_payable), 0) AS v FROM purchases GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.v || 0)]));
+  const payMap = new Map(db.prepare(`SELECT cs_name, COALESCE(SUM(amount), 0) AS v FROM payments GROUP BY cs_name`).all().map(r => [r.cs_name, Number(r.v || 0)]));
+
+  const traders = db.prepare(`SELECT cs_name, trader_type, opening_balance FROM traders`).all();
   let receivable = 0, payable = 0;
   for (const t of traders) {
     if (t.trader_type === 'C') {
-      const s = db.prepare(`SELECT COALESCE(SUM(net_payable), 0) AS v FROM sales WHERE cs_name = ?`).get(t.cs_name).v;
-      const c = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM collections WHERE cs_name = ?`).get(t.cs_name).v;
-      receivable += Number(t.opening_balance || 0) + s - c;
+      receivable += Number(t.opening_balance || 0) + (salesMap.get(t.cs_name) || 0) - (collMap.get(t.cs_name) || 0);
     } else {
-      const p = db.prepare(`SELECT COALESCE(SUM(net_payable), 0) AS v FROM purchases WHERE cs_name = ?`).get(t.cs_name).v;
-      const py = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM payments WHERE cs_name = ?`).get(t.cs_name).v;
-      payable += Number(t.opening_balance || 0) + p - py;
+      payable += Number(t.opening_balance || 0) + (purMap.get(t.cs_name) || 0) - (payMap.get(t.cs_name) || 0);
     }
   }
 
@@ -1600,7 +1697,218 @@ app.get('/api/admin/client-backup', (req, res) => {
 app.get('/api/admin/net-test', (req, res) => {
   const t0 = Date.now();
   const tables = db.prepare(`SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table'`).get().cnt;
-  res.json({ ok: true, latencyMs: Date.now() - t0 + 1, tables, status: 'CONNECTED (SQLite WAL Active)' });
+  const products = db.prepare(`SELECT COUNT(*) AS cnt FROM products`).get().cnt;
+  const traders = db.prepare(`SELECT COUNT(*) AS cnt FROM traders`).get().cnt;
+  const sales = db.prepare(`SELECT COUNT(*) AS cnt FROM sales`).get().cnt;
+  const purchases = db.prepare(`SELECT COUNT(*) AS cnt FROM purchases`).get().cnt;
+  res.json({
+    ok: true,
+    latencyMs: Date.now() - t0 + 1,
+    tables,
+    stats: { products, traders, sales, purchases },
+    status: `CONNECTED (Products: ${products}, Traders: ${traders}, Sales: ${sales}, Purchases: ${purchases})`
+  });
+});
+
+// ==================== MAIN ADMIN .BAK UPLOAD & AUTO-UPDATE ENGINE ====================
+const RESTORABLE_TABLES = new Set([
+  'companies', 'branches', 'stores', 'users', 'trader_groups', 'traders',
+  'categories', 'product_groups', 'brands', 'colors', 'products', 'branch_prices',
+  'account_sub_groups', 'account_ledgers', 'banks', 'bank_accounts', 'cheque_books',
+  'employees', 'salary_processes', 'stock_balances', 'product_serials', 'serial_history',
+  'purchases', 'purchase_items', 'purchase_returns', 'purchase_return_items',
+  'price_quotations', 'price_quotation_items', 'sales', 'sales_items',
+  'sales_returns', 'sales_return_items', 'stock_transfers', 'stock_transfer_items',
+  'rma_complains', 'rma_complain_items', 'rma_replace_outs', 'rma_replace_out_items',
+  'rma_replace_ins', 'rma_replace_in_items', 'rma_deliveries', 'rma_delivery_items',
+  'service_groups', 'problem_groups', 'services', 'problems',
+  'service_bills', 'service_bill_items', 'payments', 'collections',
+  'bank_transactions', 'journal_vouchers', 'balance_transfers', 'modification_logs'
+]);
+
+let savedBrandingBeforeRestore = new Map();
+let savedMainAdminBeforeRestore = null;
+
+function isMainAdminSession(sess) {
+  if (!sess) return false;
+  if (String(sess.userId || '').toLowerCase() === 'jubayer') return true;
+  if (sess.permissionType === 'A') return true;
+  return Boolean(sess.permissions?.actions?.manageAdmins);
+}
+
+app.get('/api/admin/db-stats', (req, res) => {
+  const count = (t) => db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get()?.c || 0;
+  res.json({
+    ok: true,
+    stats: {
+      branches: count('branches'),
+      users: count('users'),
+      categories: count('categories'),
+      product_groups: count('product_groups'),
+      brands: count('brands'),
+      products: count('products'),
+      traders: count('traders'),
+      stock_balances: count('stock_balances'),
+      product_serials: count('product_serials'),
+      purchases: count('purchases'),
+      sales: count('sales'),
+      collections: count('collections'),
+      payments: count('payments'),
+      journal_vouchers: count('journal_vouchers'),
+      employees: count('employees')
+    }
+  });
+});
+
+app.post('/api/admin/restore-bak/start', (req, res) => {
+  const sess = getSession(req);
+  if (!isMainAdminSession(sess)) {
+    return res.status(403).json({ ok: false, message: 'Access Denied! Only Main Admin can upload & restore database backups.' });
+  }
+  const { tables = [...RESTORABLE_TABLES], preserveBranding = true } = req.body || {};
+
+  // Snapshot existing custom shop branding and Main Admin credentials so nothing critical is lost
+  savedBrandingBeforeRestore = new Map();
+  if (preserveBranding) {
+    for (const b of db.prepare(`SELECT branch_name, logo_url, invoice_footer, phone, address FROM branches`).all()) {
+      savedBrandingBeforeRestore.set(String(b.branch_name || '').toUpperCase(), b);
+    }
+  }
+  savedMainAdminBeforeRestore = db.prepare(`SELECT * FROM users WHERE LOWER(user_id) = 'jubayer'`).get() || null;
+
+  db.exec('BEGIN TRANSACTION;');
+  try {
+    for (const tbl of tables) {
+      if (!RESTORABLE_TABLES.has(tbl)) continue;
+      db.exec(`DELETE FROM ${tbl};`);
+    }
+    db.exec('COMMIT;');
+  } catch (err) {
+    try { db.exec('ROLLBACK;'); } catch {}
+    return res.status(500).json({ ok: false, message: `Restore start error: ${err.message}` });
+  }
+  res.json({ ok: true, message: 'Old/demo data cleared. Ready to receive .Bak data chunks.' });
+});
+
+app.post('/api/admin/restore-bak/chunk', (req, res) => {
+  const sess = getSession(req);
+  if (!isMainAdminSession(sess)) {
+    return res.status(403).json({ ok: false, message: 'Access Denied! Main Admin only.' });
+  }
+  const { table, rows = [] } = req.body || {};
+  if (!RESTORABLE_TABLES.has(table)) {
+    return res.status(400).json({ ok: false, message: `Invalid table: ${table}` });
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.json({ ok: true, inserted: 0 });
+  }
+
+  const validCols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+  const cols = Object.keys(rows[0]).filter(c => validCols.has(c));
+  if (cols.length === 0) {
+    return res.json({ ok: true, inserted: 0 });
+  }
+
+  const placeholders = cols.map(() => '?').join(', ');
+  const stmt = db.prepare(`INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`);
+
+  db.exec('BEGIN TRANSACTION;');
+  try {
+    for (const rawRow of rows) {
+      const row = { ...rawRow };
+      if (table === 'branches') {
+        const prev = savedBrandingBeforeRestore.get(String(row.branch_name || '').toUpperCase());
+        if (prev) {
+          if (prev.logo_url && prev.logo_url !== '/IMAGE/unisoft.svg') row.logo_url = prev.logo_url;
+          if (prev.invoice_footer) row.invoice_footer = prev.invoice_footer;
+        }
+      }
+      if (table === 'users' && String(row.user_id || '').toLowerCase() === 'jubayer' && savedMainAdminBeforeRestore) {
+        row.password = savedMainAdminBeforeRestore.password || '555444';
+        row.permission_type = 'A';
+        row.permissions_json = savedMainAdminBeforeRestore.permissions_json || row.permissions_json;
+      }
+      stmt.run(...cols.map(c => (row[c] === undefined ? null : row[c])));
+    }
+    db.exec('COMMIT;');
+  } catch (err) {
+    try { db.exec('ROLLBACK;'); } catch {}
+    return res.status(500).json({ ok: false, message: `Chunk insert failed on ${table}: ${err.message}` });
+  }
+
+  res.json({ ok: true, table, inserted: rows.length });
+});
+
+app.post('/api/admin/restore-bak/finish', async (req, res) => {
+  const sess = getSession(req);
+  if (!isMainAdminSession(sess)) {
+    return res.status(403).json({ ok: false, message: 'Access Denied! Main Admin only.' });
+  }
+  const { fileName = 'HAZI_BACKUP.Bak' } = req.body || {};
+
+  // Guarantee Main Super Admin jubayer stays intact with full power
+  if (savedMainAdminBeforeRestore) {
+    const a = savedMainAdminBeforeRestore;
+    db.prepare(`
+      INSERT OR REPLACE INTO users (
+        user_id, user_name, password, father_name, mother_name, address, email,
+        mobile, opt_mobile, permission_type, operate_company, active, permissions_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'A', ?, 'Y', ?)
+    `).run(
+      a.user_id, a.user_name, a.password || '555444', a.father_name || '', a.mother_name || '',
+      a.address || '', a.email || '', a.mobile || '', a.opt_mobile || '',
+      a.operate_company || 'HAZI TRADERS', a.permissions_json || ''
+    );
+  }
+  seedDatabase();
+  ensureIndexes();
+
+  const count = (t) => db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get()?.c || 0;
+  const stats = {
+    branches: count('branches'),
+    users: count('users'),
+    categories: count('categories'),
+    product_groups: count('product_groups'),
+    brands: count('brands'),
+    products: count('products'),
+    traders: count('traders'),
+    stock_balances: count('stock_balances'),
+    product_serials: count('product_serials'),
+    purchases: count('purchases'),
+    sales: count('sales'),
+    collections: count('collections'),
+    payments: count('payments'),
+    journal_vouchers: count('journal_vouchers'),
+    employees: count('employees')
+  };
+
+  logModification(
+    'DATABASE_RESTORE',
+    fileName,
+    'RESTORE_BAK',
+    sess.userName || 'JUBAYER',
+    sess.branchName || 'HAZI TRADERS',
+    `Uploaded ${fileName}: ${stats.products} products, ${stats.traders} traders, ${stats.sales} sales, ${stats.purchases} purchases`,
+    0
+  );
+
+  // Update local seed gz if writable (non-serverless)
+  if (!isServerless) {
+    try {
+      const rawBuf = exportDatabaseBuffer();
+      fs.writeFileSync(SEED_GZ_PATH, zlib.gzipSync(rawBuf, { level: 6 }));
+    } catch {}
+  }
+
+  // Push fresh database snapshot to Supabase so Vercel live site persists permanently
+  const syncedToSupabase = await pushSnapshotToSupabase({ force: true });
+
+  res.json({
+    ok: true,
+    stats,
+    syncedToSupabase,
+    message: `Database updated from "${fileName}"! Loaded ${stats.products} Products, ${stats.traders} Traders, ${stats.product_serials} Serials, ${stats.sales} Sales, ${stats.purchases} Purchases.`
+  });
 });
 
 // ==================== DYNAMIC REPORTS & EXCEL EXPORT ====================
