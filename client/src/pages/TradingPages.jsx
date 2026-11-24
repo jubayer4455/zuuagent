@@ -11,6 +11,8 @@ export function PurchasePage() {
   const [purchases, setPurchases] = useState([]);
   const [navIdx, setNavIdx] = useState(-1);
   const [scanCode, setScanCode] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
   const [header, setHeader] = useState({
     ref_no: '',
     purchase_date: getTodayStr(),
@@ -182,6 +184,52 @@ export function PurchasePage() {
     }
   };
 
+  const updatePurchaseItem = (idx, patch) => {
+    setItems(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const next = { ...it, ...patch };
+      const q = Math.max(1, Number(next.qty || 1));
+      const up = Math.max(0, Number(next.unit_price || 0));
+      return { ...next, qty: q, unit_price: up, total_price: q * up };
+    }));
+  };
+
+  const handleAddPurchaseLineOnly = () => {
+    if (!line.product_name.trim()) return notify('Please select an Item/Model first', 'error');
+    const qty = Math.max(1, Number(line.qty || 1));
+    const up = Math.max(0, Number(line.unit_price || 0));
+    let serialStr = line.serial_from || line.serial_common;
+    if (line.serial_mode === 'seq' && line.serial_from && line.serial_to) {
+      const f = parseInt(line.serial_from, 10);
+      const t = parseInt(line.serial_to, 10);
+      if (!isNaN(f) && !isNaN(t) && t >= f && t - f <= 200) {
+        const arr = [];
+        for (let k = f; k <= t; k++) arr.push(`${line.serial_common}${k}`);
+        serialStr = arr.join(',');
+      }
+    } else if (line.serial_mode === 'auto') {
+      const arr = [];
+      for (let k = 1; k <= qty; k++) arr.push(`AUTO-${Date.now().toString().slice(-5)}-${k}`);
+      serialStr = arr.join(',');
+    }
+    setItems(prev => [
+      ...prev,
+      {
+        product_id: line.product_id || 'PD00000001',
+        product_group: line.product_group,
+        product_name: line.product_name,
+        product_description: line.product_description || line.product_name,
+        warranty: line.warranty,
+        expiry_date: line.expiry_date,
+        serial_no: serialStr,
+        qty,
+        unit_price: up,
+        total_price: qty * up
+      }
+    ]);
+    setLine({ ...line, product_id: '', product_name: '', product_description: '', serial_common: '', serial_from: '', serial_to: '', qty: '1', unit_price: '0' });
+  };
+
   const handlePrint = () => {
     openPrint({
       title: 'PURCHASE VOUCHER / BILL',
@@ -206,324 +254,378 @@ export function PurchasePage() {
     });
   };
 
+  const purchaseDue = Math.max(0, netPayable - Number(header.payment_amount || 0));
+
   return (
     <div className="erp-container">
       <fieldset className="erp-fieldset">
-        <legend className="erp-legend">Purchase</legend>
+        <legend className="erp-legend">
+          <div className="d-flex align-items-center gap-2">
+            <span>Purchase Bill</span>
+            {header.purchase_id && (
+              <span className="erp-due-badge-inline" style={{ background: '#eff5ff', color: '#0f3264', border: '1px solid #cbd8eb' }}>
+                {header.purchase_id}
+              </span>
+            )}
+          </div>
+          <div className="d-flex align-items-center gap-1">
+            <button id="MainContent_PreviousImage" className="erp-nav-circle-btn" title="Previous Bill" onClick={() => {
+              const next = Math.min(purchases.length - 1, navIdx + 1);
+              setNavIdx(next);
+              loadRecord(purchases[next]);
+            }}>&lt;</button>
+            <button id="MainContent_PauseImage" className="erp-nav-circle-btn" title="Latest Bill" onClick={() => loadRecord(purchases[0])}>||</button>
+            <button id="MainContent_NextImage" className="erp-nav-circle-btn" title="Next Bill" onClick={() => {
+              const prev = Math.max(0, navIdx - 1);
+              setNavIdx(prev);
+              loadRecord(purchases[prev]);
+            }}>&gt;</button>
+          </div>
+        </legend>
 
-        <div className="row g-1 align-items-center mb-1 p-1 rounded" style={{ background: '#e7f1ff', border: '1px solid #b6d4fe' }}>
-          <div className="col-md-2">
-            <label className="erp-label fw-bold text-primary">▣ Barcode / Serial Quick Scan</label>
+        {/* ZONE 1: Supplier & Bill Info */}
+        <div className="erp-zone">
+          <div className="erp-zone-title">
+            <span>1. Supplier &amp; Purchase Details</span>
+            {selectedTrader && (
+              <span
+                className="erp-due-badge-inline"
+                style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}
+              >
+                Supplier Balance: ৳{Number(selectedTrader.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </span>
+            )}
           </div>
-          <div className="col-md-5">
-            <input
-              id="PURCHASE_BARCODE_SCAN"
-              className="erp-input"
-              placeholder="Scan Barcode (e.g. 89010001), Product ID (PRD00001) or Serial & Press Enter..."
-              value={scanCode}
-              onChange={(e) => setScanCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleBarcodeQuickAdd(e.target.value);
-                }
-              }}
-            />
+          <div className="row g-2 align-items-end">
+            <div className="col-md-4">
+              <label className="erp-field-label">Supplier Name *</label>
+              <div className="d-flex gap-1">
+                <AutocompleteInput
+                  id="CS_NAME"
+                  placeholder="Search supplier by name or mobile..."
+                  value={header.cs_name}
+                  onChange={(v) => setHeader({ ...header, cs_name: v })}
+                  options={master.traders}
+                  labelKey="cs_name"
+                  subKey="group_name"
+                  onSelect={(t) => setHeader({ ...header, cs_name: t.cs_name, cs_group: t.group_name })}
+                />
+                <button id="ADD_CS" type="button" className="erp-btn" title="Add New Supplier" onClick={() => navigate('/GI/CUSTOMERINFORMATION.aspx')}>+</button>
+              </div>
+            </div>
+            <div className="col-md-2">
+              <label className="erp-field-label">Purchase Date</label>
+              <input id="PURCHASE_DATE" className="erp-input text-center" value={header.purchase_date} onChange={(e) => setHeader({ ...header, purchase_date: e.target.value })} />
+            </div>
+            <div className="col-md-2">
+              <label className="erp-field-label">Ref. / Supplier Bill No.</label>
+              <input id="REF_NO" className="erp-input" placeholder="Optional ref..." value={header.ref_no} onChange={(e) => setHeader({ ...header, ref_no: e.target.value })} />
+            </div>
+            <div className="col-md-4">
+              <label className="erp-field-label">Find Existing Purchase ID</label>
+              <div className="d-flex gap-1">
+                <AutocompleteInput
+                  id="SEARCH_PURCHASE_ID"
+                  placeholder="Type Purchase ID (e.g. PUR...)"
+                  value={header.search_purchase_id}
+                  onChange={(v) => setHeader({ ...header, search_purchase_id: v })}
+                  options={purchases}
+                  labelKey="purchase_id"
+                  subKey="cs_name"
+                  onSelect={loadRecord}
+                />
+                <button id="PU_ID_SEARCH" type="button" className="erp-btn" onClick={async () => {
+                  let found = purchases.find(p => p.purchase_id === header.search_purchase_id);
+                  if (!found && header.search_purchase_id.trim()) {
+                    const res = await fetch(`/api/trading/purchases?q=${encodeURIComponent(header.search_purchase_id.trim())}&limit=20`);
+                    if (res.ok) {
+                      const d = await res.json();
+                      found = (d.list || []).find(p => p.purchase_id === header.search_purchase_id.trim()) || d.list?.[0];
+                    }
+                  }
+                  if (!found) found = purchases[0];
+                  if (found) loadRecord(found);
+                  else notify('Purchase ID not found', 'error');
+                }}>Find</button>
+              </div>
+            </div>
           </div>
-          <div className="col-md-2">
-            <button id="BTN_PURCHASE_SCAN_ADD" type="button" className="erp-btn w-100 fw-bold" onClick={() => handleBarcodeQuickAdd(scanCode)}>
-              Scan &amp; Add Item
+        </div>
+
+        {/* ZONE 2: Fast Barcode Scan & Item Entry */}
+        <div className="erp-zone-scan">
+          <div className="erp-zone-title" style={{ color: '#0f3264' }}>
+            <span>2. Add Products (Barcode Quick Scan or Search)</span>
+            <button
+              type="button"
+              className="erp-btn erp-btn-sm"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+            >
+              {showAdvanced ? 'Hide Advanced Serial & Store Options ▴' : 'Advanced Serial & Store Options ▾'}
             </button>
           </div>
-          <div className="col-md-3 text-muted" style={{ fontSize: '11px' }}>
-            Tip: USB Barcode Scanner auto-adds on Enter
-          </div>
-        </div>
 
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Ref./Bill No.</label></div>
-          <div className="col-md-2"><input id="REF_NO" className="erp-input" value={header.ref_no} onChange={(e) => setHeader({ ...header, ref_no: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Purchase Date</label></div>
-          <div className="col-md-2"><input id="PURCHASE_DATE" className="erp-input" value={header.purchase_date} onChange={(e) => setHeader({ ...header, purchase_date: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Purchase ID</label></div>
-          <div className="col-md-3">
-            <AutocompleteInput
-              id="SEARCH_PURCHASE_ID"
-              value={header.search_purchase_id}
-              onChange={(v) => setHeader({ ...header, search_purchase_id: v })}
-              options={purchases}
-              labelKey="purchase_id"
-              subKey="cs_name"
-              onSelect={loadRecord}
-            />
+          <div className="row g-2 align-items-end mb-2">
+            <div className="col-md-5">
+              <label className="erp-field-label" style={{ color: '#0f3264' }}>▣ Barcode / Serial Quick Scan (Press Enter)</label>
+              <div className="d-flex gap-1">
+                <input
+                  id="PURCHASE_BARCODE_SCAN"
+                  className="erp-input"
+                  placeholder="Scan Barcode (PD00000001) or Serial & Press Enter..."
+                  value={scanCode}
+                  onChange={(e) => setScanCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleBarcodeQuickAdd(e.target.value);
+                    }
+                  }}
+                />
+                <button id="BTN_PURCHASE_SCAN_ADD" type="button" className="erp-btn" onClick={() => handleBarcodeQuickAdd(scanCode)}>
+                  Scan Add
+                </button>
+              </div>
+            </div>
+            <div className="col-md-4">
+              <label className="erp-field-label">Or Select Item / Model No.</label>
+              <div className="d-flex gap-1">
+                <AutocompleteInput
+                  id="PRODUCT_NAME"
+                  placeholder="Type product name, brand, or code..."
+                  value={line.product_name}
+                  onChange={(v) => setLine({ ...line, product_name: v })}
+                  options={master.products}
+                  labelKey="product_name"
+                  subKey="stock_qty"
+                  onSelect={(p) => setLine({
+                    ...line,
+                    product_id: p.product_id,
+                    product_group: p.group_name,
+                    product_name: p.product_name,
+                    product_description: p.description || p.product_name,
+                    warranty: p.warranty || '12 Months',
+                    unit_price: String(p.purchase_price || 0),
+                    stock_qty: p.stock_qty || 0
+                  })}
+                />
+                <button id="MainContent_ADD_PRODUCT" type="button" className="erp-btn" title="Create New Product" onClick={() => navigate('/GI/PRODUCTINFORMATION.aspx')}>+</button>
+              </div>
+            </div>
+            <div className="col-md-1 col-4">
+              <label className="erp-field-label">Qty</label>
+              <input id="PRODUCT_QTY" className="erp-input text-center" value={line.qty} onChange={(e) => setLine({ ...line, qty: e.target.value })} />
+            </div>
+            <div className="col-md-1 col-4">
+              <label className="erp-field-label">Unit Cost</label>
+              <input id="TUNIT_PRICE" className="erp-input text-end" value={line.unit_price} onChange={(e) => setLine({ ...line, unit_price: e.target.value })} />
+            </div>
+            <div className="col-md-1 col-4">
+              <button type="button" className="erp-btn erp-btn-primary w-100" onClick={handleAddPurchaseLineOnly}>+ Add</button>
+            </div>
           </div>
-          <div className="col-md-2">
-            <button id="PU_ID_SEARCH" className="erp-btn w-100" onClick={async () => {
-              let found = purchases.find(p => p.purchase_id === header.search_purchase_id);
-              if (!found && header.search_purchase_id.trim()) {
-                const res = await fetch(`/api/trading/purchases?q=${encodeURIComponent(header.search_purchase_id.trim())}&limit=20`);
-                if (res.ok) {
-                  const d = await res.json();
-                  found = (d.list || []).find(p => p.purchase_id === header.search_purchase_id.trim()) || d.list?.[0];
-                }
-              }
-              if (!found) found = purchases[0];
-              if (found) loadRecord(found);
-              else notify('Purchase ID not found', 'error');
-            }}>Search</button>
-          </div>
-        </div>
 
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Supplier Group</label></div>
-          <div className="col-md-3">
-            <AutocompleteInput
-              id="CS_GROUP"
-              value={header.cs_group}
-              onChange={(v) => setHeader({ ...header, cs_group: v })}
-              options={master.traderGroups}
-              labelKey="group_name"
-            />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Supplier Name</label></div>
-          <div className="col-md-5">
-            <AutocompleteInput
-              id="CS_NAME"
-              value={header.cs_name}
-              onChange={(v) => setHeader({ ...header, cs_name: v })}
-              options={master.traders}
-              labelKey="cs_name"
-              subKey="group_name"
-              onSelect={(t) => setHeader({ ...header, cs_name: t.cs_name, cs_group: t.group_name })}
-            />
-          </div>
-          <div className="col-md-1"><button id="ADD_CS" className="erp-btn w-100" onClick={() => navigate('/GI/CUSTOMERINFORMATION.aspx')}>Add</button></div>
-          <div className="col-md-1"><button id="LEDGER" className="erp-btn w-100" onClick={() => navigate('/GI/CS_REPORTS.aspx')}>Ledger.</button></div>
-        </div>
-
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Product Group</label></div>
-          <div className="col-md-3">
-            <AutocompleteInput
-              id="PRODUCT_GROUP"
-              value={line.product_group}
-              onChange={(v) => setLine({ ...line, product_group: v })}
-              options={master.productGroups}
-              labelKey="group_name"
-            />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Item/Model No.</label></div>
-          <div className="col-md-5">
-            <AutocompleteInput
-              id="PRODUCT_NAME"
-              value={line.product_name}
-              onChange={(v) => setLine({ ...line, product_name: v })}
-              options={master.products}
-              labelKey="product_name"
-              subKey="stock_qty"
-              onSelect={(p) => setLine({
-                ...line,
-                product_id: p.product_id,
-                product_group: p.group_name,
-                product_name: p.product_name,
-                product_description: p.description || p.product_name,
-                warranty: p.warranty || '12 Months',
-                unit_price: String(p.purchase_price || 0),
-                stock_qty: p.stock_qty || 0
-              })}
-            />
-          </div>
-          <div className="col-md-1"><button id="MainContent_ADD_PRODUCT" className="erp-btn w-100" onClick={() => navigate('/GI/PRODUCTINFORMATION.aspx')}>Add</button></div>
-          <div className="col-md-1"><button id="PRODUCT_LEDGER" className="erp-btn w-100" onClick={() => navigate('/GI/STOCK_REPORTS.aspx')}>Item Ledger.</button></div>
-        </div>
-
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Description</label></div>
-          <div className="col-md-3">
-            <textarea id="MainContent_Product_Description" className="erp-textarea" rows={1} value={line.product_description} readOnly />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Expiry Date</label></div>
-          <div className="col-md-2"><input id="MainContent_EXPIRY_DATE" className="erp-input" placeholder="DD/MM/YYYY" value={line.expiry_date} onChange={(e) => setLine({ ...line, expiry_date: e.target.value })} /></div>
-          <div className="col-md-5 d-flex flex-wrap gap-2 align-items-center">
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="RadioButtonList2_0" type="radio" name="pSer" checked={line.serial_mode === 'single'} onChange={() => setLine({ ...line, serial_mode: 'single' })} />
-              Single Serial
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="RadioButtonList2_1" type="radio" name="pSer" checked={line.serial_mode === 'seq'} onChange={() => setLine({ ...line, serial_mode: 'seq' })} />
-              Secquance Available
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="RadioButtonList2_2" type="radio" name="pSer" checked={line.serial_mode === 'auto'} onChange={() => setLine({ ...line, serial_mode: 'auto' })} />
-              Auto Generated Serial
-            </label>
-          </div>
-        </div>
-
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Serial Common</label></div>
-          <div className="col-md-2"><input id="SERIAL_COMMON" className="erp-input" value={line.serial_common} onChange={(e) => setLine({ ...line, serial_common: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Serial No/From</label></div>
-          <div className="col-md-2"><input id="SERIAL_FROM" className="erp-input" value={line.serial_from} onChange={(e) => setLine({ ...line, serial_from: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Serial To</label></div>
-          <div className="col-md-2"><input id="SERIAL_TO" className="erp-input" value={line.serial_to} onChange={(e) => setLine({ ...line, serial_to: e.target.value })} /></div>
-          <div className="col-md-3 d-flex gap-2 align-items-center">
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="SERIAL_CLEAR" type="checkbox" checked={line.serial_clear} onChange={(e) => setLine({ ...line, serial_clear: e.target.checked, serial_common: '', serial_from: '', serial_to: '' })} />
-              Serial Clear.
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="CHECK_DIGIT" type="checkbox" checked={line.check_digit} onChange={(e) => setLine({ ...line, check_digit: e.target.checked })} />
-              Check Digit.
-            </label>
-            <input id="CHECK_DIGIT_TEXTBOX" className="erp-input" style={{ width: '55px' }} value={line.check_digit_val} onChange={(e) => setLine({ ...line, check_digit_val: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="row g-1 align-items-center mb-2">
-          <div className="col-md-1"><label className="erp-label">Store Name</label></div>
-          <div className="col-md-2">
-            <select id="DropDownStore" className="erp-select" value={header.store_name} onChange={(e) => setHeader({ ...header, store_name: e.target.value })}>
-              <option value=""></option>
-              <option value="SHOW ROOM">SHOW ROOM</option>
-              <option value="MAIN GODOWN">MAIN GODOWN</option>
-            </select>
-          </div>
-          <div className="col-md-1"><label className="erp-label">Warranty</label></div>
-          <div className="col-md-2"><input id="WARRANTY" className="erp-input" value={line.warranty} onChange={(e) => setLine({ ...line, warranty: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Product Qty</label></div>
-          <div className="col-md-2"><input id="PRODUCT_QTY" className="erp-input text-center" value={line.qty} onChange={(e) => setLine({ ...line, qty: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Unit Price</label></div>
-          <div className="col-md-2"><input id="TUNIT_PRICE" className="erp-input text-center" value={line.unit_price} onChange={(e) => setLine({ ...form => form, ...line, unit_price: e.target.value })} /></div>
-        </div>
-
-        {/* Toolbar */}
-        <div className="d-flex flex-wrap gap-1 align-items-center mb-1">
-          <button id="SAVE_BUTTON" className="erp-btn" onClick={handleAddOrSave}>Save</button>
-          <button id="EDIT" className="erp-btn" onClick={handleAddOrSave}>Edit</button>
-          <button id="PRICE_EDIT" className="erp-btn" onClick={handleAddOrSave}>Edit Price</button>
-          <button id="EDIT_QTY" className="erp-btn" onClick={handleAddOrSave}>Edit Qty.</button>
-          <button id="SERIAL_EDIT" className="erp-btn" onClick={handleAddOrSave}>Edit Serial</button>
-          <button id="AL_ADJUST" className="erp-btn" onClick={() => notify('All Serials Adjusted')}>All Serial.Adj.</button>
-          <button id="SERIAL_UPLOAD" className="erp-btn" onClick={() => notify('Serial Upload ready')}>Serial Upload</button>
-          <button id="PRINT" className="erp-btn" onClick={handlePrint}>Print</button>
-          <button id="MainContent_Button1" className="erp-btn" onClick={handlePrint}>Print Preview</button>
-          <button id="BTNNARATION" className="erp-btn" onClick={() => {
-            const n = window.prompt('Input Narration / Remarks:', header.narration);
-            if (n !== null) setHeader({ ...header, narration: n });
-          }}>Narration</button>
-          <button id="VATB" className="erp-btn" onClick={() => {
-            const v = window.prompt('Input VAT Amount:', header.vat_amount);
-            if (v !== null) setHeader({ ...header, vat_amount: v });
-          }}>VAT</button>
-          <button id="QRCODEPRINT" className="erp-btn" onClick={() => openPrint({
-            title: `QR Code Label — ${header.purchase_id || 'PUR001260000001'}`,
-            customContent: (
-              <div className="text-center p-3">
-                <div className="d-inline-block border p-3" style={{ fontFamily: 'monospace' }}>
-                  <div className="fw-bold">HAZI TRADERS QR TAG</div>
-                  <div className="my-2" style={{ fontSize: '28px', letterSpacing: '4px' }}>[▣ ▤ ▥ ▦ ▣]</div>
-                  <div>ID: {header.purchase_id || 'PUR001260000001'} | Supplier: {header.cs_name || 'N/A'}</div>
+          {showAdvanced && (
+            <div className="pt-2 mt-2 border-top" style={{ borderColor: '#cbd8eb' }}>
+              <div className="row g-2 align-items-end mb-2">
+                <div className="col-md-2">
+                  <label className="erp-field-label">Supplier Group</label>
+                  <AutocompleteInput id="CS_GROUP" value={header.cs_group} onChange={(v) => setHeader({ ...header, cs_group: v })} options={master.traderGroups} labelKey="group_name" />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Product Group</label>
+                  <AutocompleteInput id="PRODUCT_GROUP" value={line.product_group} onChange={(v) => setLine({ ...line, product_group: v })} options={master.productGroups} labelKey="group_name" />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Store Name</label>
+                  <select id="DropDownStore" className="erp-select" value={header.store_name} onChange={(e) => setHeader({ ...header, store_name: e.target.value })}>
+                    <option value="SHOW ROOM">SHOW ROOM</option>
+                    <option value="SHOW ROOM2">SHOW ROOM2</option>
+                    <option value="MAIN GODOWN">MAIN GODOWN</option>
+                  </select>
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Warranty</label>
+                  <input id="WARRANTY" className="erp-input" value={line.warranty} onChange={(e) => setLine({ ...line, warranty: e.target.value })} />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Expiry Date</label>
+                  <input id="MainContent_EXPIRY_DATE" className="erp-input" placeholder="DD/MM/YYYY" value={line.expiry_date} onChange={(e) => setLine({ ...line, expiry_date: e.target.value })} />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Commenc. Date</label>
+                  <input id="TPAYMENT_DATE" className="erp-input" placeholder="DD/MM/YYYY" value={header.commenc_date} onChange={(e) => setHeader({ ...header, commenc_date: e.target.value })} />
                 </div>
               </div>
-            )
-          })}>QR Code</button>
-          <button id="CLEAR" className="erp-btn" onClick={() => {
-            setHeader({ ref_no: '', purchase_date: getTodayStr(), search_purchase_id: '', purchase_id: '', cs_group: '', cs_name: '', store_name: 'SHOW ROOM', narration: '', commenc_date: '', discount_amount: '0', vat_amount: '0', payment_amount: '0' });
-            setItems([]);
-          }}>Clear/New</button>
-          <button id="EDIT_PAGE" className="erp-btn" onClick={() => { if (purchases[0]) loadRecord(purchases[0]); }}>Edit&gt;&gt;</button>
-          <button id="EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
-          <button id="MainContent_PreviousImage" className="erp-nav-circle-btn" onClick={() => {
-            const next = Math.min(purchases.length - 1, navIdx + 1);
-            setNavIdx(next);
-            loadRecord(purchases[next]);
-          }}>&lt;</button>
-          <button id="MainContent_PauseImage" className="erp-nav-circle-btn" onClick={() => loadRecord(purchases[0])}>||</button>
-          <button id="MainContent_NextImage" className="erp-nav-circle-btn" onClick={() => {
-            const prev = Math.max(0, navIdx - 1);
-            setNavIdx(prev);
-            loadRecord(purchases[prev]);
-          }}>&gt;</button>
+              <div className="row g-2 align-items-end">
+                <div className="col-md-2">
+                  <label className="erp-field-label">Serial Common</label>
+                  <input id="SERIAL_COMMON" className="erp-input" value={line.serial_common} onChange={(e) => setLine({ ...line, serial_common: e.target.value })} />
+                </div>
+                <div className="col-md-3">
+                  <label className="erp-field-label">Serial No. / From</label>
+                  <input id="SERIAL_FROM" className="erp-input" value={line.serial_from} onChange={(e) => setLine({ ...line, serial_from: e.target.value })} />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Serial To</label>
+                  <input id="SERIAL_TO" className="erp-input" value={line.serial_to} onChange={(e) => setLine({ ...line, serial_to: e.target.value })} />
+                </div>
+                <div className="col-md-5 d-flex flex-wrap gap-3 align-items-center pb-1">
+                  <label className="erp-label d-flex align-items-center gap-1">
+                    <input id="RadioButtonList2_0" type="radio" name="pSer" checked={line.serial_mode === 'single'} onChange={() => setLine({ ...line, serial_mode: 'single' })} />
+                    Single
+                  </label>
+                  <label className="erp-label d-flex align-items-center gap-1">
+                    <input id="RadioButtonList2_1" type="radio" name="pSer" checked={line.serial_mode === 'seq'} onChange={() => setLine({ ...line, serial_mode: 'seq' })} />
+                    Sequence
+                  </label>
+                  <label className="erp-label d-flex align-items-center gap-1">
+                    <input id="RadioButtonList2_2" type="radio" name="pSer" checked={line.serial_mode === 'auto'} onChange={() => setLine({ ...line, serial_mode: 'auto' })} />
+                    Auto Serial
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* GridView1 */}
+        {/* Clean Action Toolbar */}
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <button id="SAVE_BUTTON" className="erp-btn" onClick={handleAddOrSave}>Save Purchase</button>
+            <button id="PRINT" className="erp-btn" onClick={handlePrint}>Print / Preview</button>
+            <button id="CLEAR" className="erp-btn" onClick={() => {
+              setHeader({ ref_no: '', purchase_date: getTodayStr(), search_purchase_id: '', purchase_id: '', cs_group: '', cs_name: '', store_name: 'SHOW ROOM', narration: '', commenc_date: '', discount_amount: '0', vat_amount: '0', payment_amount: '0' });
+              setItems([]);
+            }}>Clear / New</button>
+          </div>
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <button id="LEDGER" className="erp-btn" onClick={() => navigate('/GI/CS_REPORTS.aspx')}>Supplier Ledger</button>
+            <div className="erp-more-wrap">
+              <button type="button" className="erp-btn" onClick={() => setShowMoreActions(!showMoreActions)}>
+                More Actions ▾
+              </button>
+              {showMoreActions && (
+                <div className="erp-more-menu" onMouseLeave={() => setShowMoreActions(false)}>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); const n = window.prompt('Narration / Remarks:', header.narration); if (n !== null) setHeader({ ...header, narration: n }); }}>Add Narration</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); const v = window.prompt('VAT Amount:', header.vat_amount); if (v !== null) setHeader({ ...header, vat_amount: v }); }}>Add VAT Amount</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); navigate('/GI/STOCK_REPORTS.aspx'); }}>Item Stock Ledger</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); if (purchases[0]) loadRecord(purchases[0]); }}>Load Latest Bill</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); openPrint({ title: `QR Code Label — ${header.purchase_id || 'NEW'}`, customContent: (<div className="text-center p-3"><div className="d-inline-block border p-3" style={{ fontFamily: 'monospace' }}><div className="fw-bold">HAZI TRADERS QR TAG</div><div className="my-2" style={{ fontSize: '28px', letterSpacing: '4px' }}>[▣ ▤ ▥ ▦ ▣]</div><div>ID: {header.purchase_id || 'NEW'} | Supplier: {header.cs_name || 'N/A'}</div></div></div>) }); }}>Print QR Tag</button>
+                </div>
+              )}
+            </div>
+            <button id="EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
+          </div>
+        </div>
+
+        {/* Inline-Editable GridView1 */}
         <div className="erp-grid-box mb-2">
           <table id="GridView1" className="erp-table">
             <thead>
               <tr>
-                <th>SL</th>
-                <th>Purchase ID</th>
-                <th>Product ID</th>
-                <th>Product Description</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Total Price</th>
-                <th>Select</th>
-                <th>Edit</th>
-                <th>Delete</th>
+                <th style={{ width: '40px' }}>SL</th>
+                <th style={{ width: '100px' }}>Product ID</th>
+                <th>Product Description &amp; Serial</th>
+                <th style={{ width: '115px', textAlign: 'center' }}>Qty</th>
+                <th style={{ width: '105px', textAlign: 'right' }}>Unit Cost</th>
+                <th style={{ width: '115px', textAlign: 'right' }}>Total Price</th>
+                <th style={{ width: '48px', textAlign: 'center' }}>Remove</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((it, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td>{header.purchase_id || 'NEW'}</td>
-                  <td>{it.product_id}</td>
-                  <td>{it.product_description || it.product_name} {it.serial_no ? `(SL: ${it.serial_no})` : ''}</td>
-                  <td>{it.qty}</td>
-                  <td>{Number(it.unit_price || 0).toFixed(2)}</td>
-                  <td>{Number(it.total_price || 0).toFixed(2)}</td>
-                  <td><button className="erp-btn" onClick={() => setLine({ ...line, ...it })}>Select</button></td>
-                  <td><button className="erp-btn" onClick={() => {
-                    setLine({ ...line, ...it });
-                    setItems(items.filter((_, i) => i !== idx));
-                  }}>Edit</button></td>
-                  <td><button className="erp-btn" onClick={() => setItems(items.filter((_, i) => i !== idx))}>Delete</button></td>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="erp-empty-grid">
+                    No items added yet — scan a barcode or select a product above to build this purchase bill.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                items.map((it, idx) => (
+                  <tr key={idx}>
+                    <td>{idx + 1}</td>
+                    <td style={{ fontWeight: 600, color: '#475569' }}>{it.product_id}</td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{it.product_name || it.product_description}</div>
+                      {it.serial_no && <div style={{ fontSize: '11px', color: '#0f3264' }}>SL: {it.serial_no}</div>}
+                    </td>
+                    <td className="text-center">
+                      <div className="erp-qty-stepper">
+                        <button type="button" onClick={() => updatePurchaseItem(idx, { qty: Math.max(1, Number(it.qty || 1) - 1) })}>−</button>
+                        <input
+                          value={it.qty}
+                          onChange={(e) => updatePurchaseItem(idx, { qty: e.target.value })}
+                        />
+                        <button type="button" onClick={() => updatePurchaseItem(idx, { qty: Number(it.qty || 1) + 1 })}>+</button>
+                      </div>
+                    </td>
+                    <td className="text-end">
+                      <input
+                        className="erp-inline-num"
+                        value={it.unit_price}
+                        onChange={(e) => updatePurchaseItem(idx, { unit_price: e.target.value })}
+                      />
+                    </td>
+                    <td className="text-end fw-bold">{Number(it.total_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td className="text-center">
+                      <button type="button" className="erp-row-remove" title="Remove item" onClick={() => setItems(items.filter((_, i) => i !== idx))}>×</button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Footer 3-Column Summary */}
-        <div className="row g-2">
-          <div className="col-md-3">
-            <div className="erp-footer-panel">
-              <div>Stock Qty.: {line.stock_qty}</div>
-              <div>Ledger Amount: {selectedTrader ? Number(selectedTrader.current_balance || 0).toFixed(2) : '0.00'}</div>
-              <div>Last Purch. Price: {line.unit_price}</div>
-              <div>Last Purch. Serial: {line.serial_from || 'N/A'}</div>
-              <div>Total Purch. Qty.: {totalQty}</div>
-              <input id="PURCHASE_ID" className="erp-input mt-1" value={header.purchase_id} readOnly placeholder="Purchase ID" />
+        {/* Clean Bottom Payment & Prominent Net Payable Summary */}
+        <div className="row g-2 align-items-stretch">
+          <div className="col-md-4">
+            <div className="erp-footer-panel h-100">
+              <div className="erp-zone-title mb-2">Item &amp; Bill Info</div>
+              <div className="erp-bill-summary-row"><span>Total Purchase Qty</span><strong>{totalQty}</strong></div>
+              <div className="erp-bill-summary-row"><span>Selected Item Stock</span><strong>{line.stock_qty}</strong></div>
+              <div className="erp-bill-summary-row"><span>Store</span><strong>{header.store_name || 'SHOW ROOM'}</strong></div>
+              {header.narration && <div className="mt-2 pt-1 border-top" style={{ fontSize: '11.5px', color: '#475569' }}>Note: {header.narration}</div>}
             </div>
           </div>
-          <div className="col-md-5">
-            <div className="erp-footer-panel">
-              <div className="row g-1 align-items-center mb-1">
-                <div className="col-4"><label className="erp-label">Commenc. Date</label></div>
-                <div className="col-5"><input id="TPAYMENT_DATE" className="erp-input" placeholder="Date/Month/Year" value={header.commenc_date} onChange={(e) => setHeader({ ...header, commenc_date: e.target.value })} /></div>
-                <div className="col-3"><button id="PAYMENT_DATE" className="erp-btn w-100" onClick={() => notify('Commencement Date set')}>Comm. Date</button></div>
-              </div>
-              <div className="row g-1 align-items-center mb-1">
-                <div className="col-4"><label className="erp-label">Discount Amt.</label></div>
-                <div className="col-5"><input id="PAY_DIS_AMT" className="erp-input" placeholder="Discount Amt." value={header.discount_amount} onChange={(e) => setHeader({ ...header, discount_amount: e.target.value })} /></div>
-                <div className="col-3"><button id="PAYMENT_DISCOUNT" className="erp-btn w-100" onClick={() => notify('Discount Applied')}>Discount</button></div>
-              </div>
-              <div className="row g-1 align-items-center">
-                <div className="col-4"><label className="erp-label">Payment Amt.</label></div>
-                <div className="col-5"><input id="PAY_AMT" className="erp-input" placeholder="Payment Amt." value={header.payment_amount} onChange={(e) => setHeader({ ...header, payment_amount: e.target.value })} /></div>
-                <div className="col-3"><button id="CASHPAYMENT" className="erp-btn w-100" onClick={() => notify('Payment Amount Applied')}>Payment</button></div>
+          <div className="col-md-4">
+            <div className="erp-footer-panel h-100">
+              <div className="erp-zone-title mb-2">Discount &amp; Cash Payment</div>
+              <div className="row g-2">
+                <div className="col-6">
+                  <label className="erp-field-label">Discount Amt (৳)</label>
+                  <input id="PAY_DIS_AMT" className="erp-input text-end" value={header.discount_amount} onChange={(e) => setHeader({ ...header, discount_amount: e.target.value })} />
+                </div>
+                <div className="col-6">
+                  <label className="erp-field-label">VAT Amt (৳)</label>
+                  <input className="erp-input text-end" value={header.vat_amount} onChange={(e) => setHeader({ ...header, vat_amount: e.target.value })} />
+                </div>
+                <div className="col-12">
+                  <label className="erp-field-label">Paid Now (৳)</label>
+                  <input id="PAY_AMT" className="erp-input text-end fw-bold" placeholder="0.00" value={header.payment_amount} onChange={(e) => setHeader({ ...header, payment_amount: e.target.value })} />
+                </div>
               </div>
             </div>
           </div>
           <div className="col-md-4">
-            <div className="erp-footer-panel text-end">
-              <div>Total Amount: {totalAmount.toFixed(2)}</div>
-              <div>Add VAT: {Number(header.vat_amount || 0).toFixed(2)}</div>
-              <div>Discount Amount: {Number(header.discount_amount || 0).toFixed(2)}</div>
-              <div>Net Payable Amt.: {netPayable.toFixed(2)}</div>
-              <div>Payment Amtount: {Number(header.payment_amount || 0).toFixed(2)}</div>
+            <div className="erp-bill-summary-card h-100">
+              <div className="erp-bill-summary-row"><span>Subtotal ({totalQty} items)</span><span>৳{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+              <div className="erp-bill-summary-row"><span>Add VAT</span><span>+ ৳{Number(header.vat_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+              <div className="erp-bill-summary-row"><span>Discount</span><span>− ৳{Number(header.discount_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+              <div className="erp-bill-net-row">
+                <span>Net Payable</span>
+                <span>৳{netPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div
+                className="erp-bill-due-pill"
+                style={{
+                  background: purchaseDue > 0 ? '#fff7ed' : '#ecfdf3',
+                  color: purchaseDue > 0 ? '#c2410c' : '#15803d'
+                }}
+              >
+                <span>{purchaseDue > 0 ? 'Remaining Due' : 'Fully Paid'}</span>
+                <span>৳{purchaseDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -948,6 +1050,8 @@ export function SalesPage() {
   const [navIdx, setNavIdx] = useState(-1);
   const [showCost, setShowCost] = useState(false);
   const [scanCode, setScanCode] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
 
   const [header, setHeader] = useState({
     ref_no: '',
@@ -1162,6 +1266,44 @@ export function SalesPage() {
     }
   };
 
+  const updateSalesItem = (idx, patch) => {
+    setItems(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const next = { ...it, ...patch };
+      const q = Math.max(1, Number(next.qty || 1));
+      const up = Math.max(0, Number(next.unit_price || 0));
+      const disc = Math.max(0, Number(next.discount || 0));
+      const vp = Math.max(0, Number(next.vat_percent || 0));
+      return { ...next, qty: q, unit_price: up, discount: disc, vat_percent: vp, total_price: Math.max(0, (q * up - disc) * (1 + vp / 100)) };
+    }));
+  };
+
+  const handleAddSalesLineOnly = () => {
+    if (!line.product_name.trim()) return notify('Please select an Item/Model first', 'error');
+    const qty = Math.max(1, Number(line.qty || 1));
+    const up = Math.max(0, Number(line.unit_price || 0));
+    const disc = Math.max(0, Number(line.discount || 0));
+    const vp = Math.max(0, Number(line.vat_percent || 0));
+    setItems(prev => [
+      ...prev,
+      {
+        product_id: line.product_id || 'PD00000001',
+        product_group: line.product_group,
+        product_name: line.product_name,
+        product_description: line.product_description || line.product_name,
+        item_remarks: line.item_remarks,
+        warranty: line.warranty,
+        serial_no: line.serial_from || line.serial_common,
+        qty,
+        unit_price: up,
+        discount: disc,
+        vat_percent: vp,
+        total_price: Math.max(0, (qty * up - disc) * (1 + vp / 100))
+      }
+    ]);
+    setLine({ ...line, product_id: '', product_name: '', product_description: '', item_remarks: '', serial_common: '', serial_from: '', serial_to: '', qty: '1', unit_price: '0', discount: '0', vat_percent: '0' });
+  };
+
   const handlePrint = (type = 'invoice') => {
     const phone = header.mobile_no || selectedCustomer?.mobile || '';
     openPrint({
@@ -1196,398 +1338,442 @@ export function SalesPage() {
     });
   };
 
+  const salesDue = Math.max(0, netPayable - Number(header.collection_amount || 0));
+
   return (
     <div className="erp-container">
       <fieldset className="erp-fieldset">
-        <legend className="erp-legend">Sales</legend>
+        <legend className="erp-legend">
+          <div className="d-flex align-items-center gap-2">
+            <span>Sales / Invoice</span>
+            {header.sales_id && (
+              <span className="erp-due-badge-inline" style={{ background: '#eff5ff', color: '#0f3264', border: '1px solid #cbd8eb' }}>
+                {header.sales_id}
+              </span>
+            )}
+          </div>
+          <div className="d-flex align-items-center gap-1">
+            <button id="MainContent_PreviousImage" className="erp-nav-circle-btn" title="Previous Invoice" onClick={() => {
+              const next = Math.min(salesList.length - 1, navIdx + 1);
+              setNavIdx(next);
+              loadInvoice(salesList[next]);
+            }}>&lt;</button>
+            <button id="MainContent_PauseImage" className="erp-nav-circle-btn" title="Latest Invoice" onClick={() => loadInvoice(salesList[0])}>||</button>
+            <button id="MainContent_NextImage" className="erp-nav-circle-btn" title="Next Invoice" onClick={() => {
+              const prev = Math.max(0, navIdx - 1);
+              setNavIdx(prev);
+              loadInvoice(salesList[prev]);
+            }}>&gt;</button>
+          </div>
+        </legend>
 
-        {/* Barcode / Serial Instant Scan Row */}
-        <div className="row g-1 align-items-center mb-1 p-1 rounded" style={{ background: '#e7f1ff', border: '1px solid #b6d4fe' }}>
-          <div className="col-md-2">
-            <label className="erp-label fw-bold text-primary">▣ Barcode / Serial Quick Scan</label>
+        {/* ZONE 1: Customer & Invoice Header */}
+        <div className="erp-zone">
+          <div className="erp-zone-title">
+            <span>1. Customer &amp; Invoice Details</span>
+            <div className="d-flex align-items-center gap-2">
+              {selectedCustomer && (
+                <span
+                  className="erp-due-badge-inline"
+                  style={{
+                    background: Number(selectedCustomer.current_balance || 0) > 0 ? '#fff7ed' : '#ecfdf3',
+                    color: Number(selectedCustomer.current_balance || 0) > 0 ? '#c2410c' : '#15803d',
+                    border: '1px solid #fed7aa'
+                  }}
+                >
+                  Customer Balance: ৳{Number(selectedCustomer.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="col-md-5">
-            <input
-              id="SALES_BARCODE_SCAN"
-              className="erp-input"
-              placeholder="Scan Barcode (89010001) or Serial (HMK150-26004) & Press Enter for Instant Billing..."
-              value={scanCode}
-              onChange={(e) => setScanCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSalesBarcodeScan(e.target.value);
-                }
-              }}
-            />
+          <div className="row g-2 align-items-end">
+            <div className="col-md-4">
+              <label className="erp-field-label">Customer Name *</label>
+              <div className="d-flex gap-1">
+                <AutocompleteInput
+                  id="CS_NAME"
+                  placeholder="Search customer by name or mobile..."
+                  value={header.cs_name}
+                  onChange={(v) => setHeader({ ...header, cs_name: v })}
+                  options={master.traders}
+                  labelKey="cs_name"
+                  subKey="mobile"
+                  onSelect={(t) => setHeader({ ...header, cs_name: t.cs_name, cs_group: t.group_name, mobile_no: t.mobile || header.mobile_no })}
+                />
+                <button id="ADD_CS" type="button" className="erp-btn" title="Add New Customer" onClick={() => navigate('/GI/CUSTOMERINFORMATION.aspx')}>+</button>
+              </div>
+            </div>
+            <div className="col-md-2">
+              <label className="erp-field-label">Mobile / WO No.</label>
+              <div className="d-flex gap-1">
+                <input id="MOBILE_NO" className="erp-input" placeholder="01XXXXXXXXX" value={header.mobile_no} onChange={(e) => setHeader({ ...header, mobile_no: e.target.value })} />
+                <button id="MainContent_MOBILE_SEARCH" type="button" className="erp-btn" title="Search Invoice by Mobile" onClick={() => {
+                  const found = salesList.find(s => s.mobile_no && s.mobile_no.includes(header.mobile_no));
+                  if (found) loadInvoice(found);
+                  else notify('No invoice found for this mobile number', 'error');
+                }}>⌕</button>
+              </div>
+            </div>
+            <div className="col-md-2">
+              <label className="erp-field-label">Sales Date</label>
+              <input id="SALES_DATE" className="erp-input text-center" value={header.sales_date} onChange={(e) => setHeader({ ...header, sales_date: e.target.value })} />
+            </div>
+            <div className="col-md-1">
+              <label className="erp-field-label">Ref. No.</label>
+              <input id="REF_NO" className="erp-input" value={header.ref_no} onChange={(e) => setHeader({ ...header, ref_no: e.target.value })} />
+            </div>
+            <div className="col-md-3">
+              <label className="erp-field-label">Find Existing Invoice ID</label>
+              <div className="d-flex gap-1">
+                <AutocompleteInput
+                  id="SEARCH_SALES_ID"
+                  placeholder="Type Sales ID (INV...)"
+                  value={header.search_sales_id}
+                  onChange={(v) => setHeader({ ...header, search_sales_id: v })}
+                  options={salesList}
+                  labelKey="sales_id"
+                  subKey="cs_name"
+                  onSelect={loadInvoice}
+                />
+                <button id="PU_ID_SEARCH" type="button" className="erp-btn" onClick={async () => {
+                  let found = salesList.find(s => s.sales_id === header.search_sales_id);
+                  if (!found && header.search_sales_id.trim()) {
+                    const res = await fetch(`/api/trading/sales?q=${encodeURIComponent(header.search_sales_id.trim())}&limit=20`);
+                    if (res.ok) {
+                      const d = await res.json();
+                      found = (d.list || []).find(s => s.sales_id === header.search_sales_id.trim()) || d.list?.[0];
+                    }
+                  }
+                  if (!found) found = salesList[0];
+                  if (found) loadInvoice(found);
+                  else notify('Sales ID not found', 'error');
+                }}>Find</button>
+              </div>
+            </div>
           </div>
-          <div className="col-md-2">
-            <button id="BTN_SALES_SCAN_ADD" type="button" className="erp-btn w-100 fw-bold" onClick={() => handleSalesBarcodeScan(scanCode)}>
-              Scan &amp; Add Item
+        </div>
+
+        {/* ZONE 2: Fast Barcode Scan & Product Entry */}
+        <div className="erp-zone-scan">
+          <div className="erp-zone-title" style={{ color: '#0f3264' }}>
+            <span>2. Add Products (Barcode / Serial Quick Scan or Search)</span>
+            <button
+              type="button"
+              className="erp-btn erp-btn-sm"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+            >
+              {showAdvanced ? 'Hide Advanced Serial & Price Options ▴' : 'Advanced Serial & Price Options ▾'}
             </button>
           </div>
-          <div className="col-md-3 text-muted" style={{ fontSize: '11px' }}>
-            Auto-fills Item, Warranty, Price &amp; Adds to Bill
+
+          <div className="row g-2 align-items-end mb-1">
+            <div className="col-md-4">
+              <label className="erp-field-label" style={{ color: '#0f3264' }}>▣ Barcode / Serial Quick Scan (Enter)</label>
+              <div className="d-flex gap-1">
+                <input
+                  id="SALES_BARCODE_SCAN"
+                  className="erp-input"
+                  placeholder="Scan Barcode (PD00000001) or Serial & Enter..."
+                  value={scanCode}
+                  onChange={(e) => setScanCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSalesBarcodeScan(e.target.value);
+                    }
+                  }}
+                />
+                <button id="BTN_SALES_SCAN_ADD" type="button" className="erp-btn" onClick={() => handleSalesBarcodeScan(scanCode)}>
+                  Scan
+                </button>
+              </div>
+            </div>
+            <div className="col-md-4">
+              <label className="erp-field-label">Or Search Item / Model No.</label>
+              <div className="d-flex gap-1">
+                <AutocompleteInput
+                  id="PRODUCT_NAME"
+                  placeholder="Type product name, brand, or code..."
+                  value={line.product_name}
+                  onChange={(v) => setLine({ ...line, product_name: v })}
+                  options={master.products}
+                  labelKey="product_name"
+                  subKey="stock_qty"
+                  onSelect={(p) => {
+                    const tierPrice = header.price_tier === 'WHOLE_SALES_PRICE'
+                      ? p.wholesale_price
+                      : header.price_tier === 'DEALER_PRICE'
+                      ? p.dealer_price
+                      : p.sales_price;
+                    setLine({
+                      ...line,
+                      product_id: p.product_id,
+                      product_group: p.group_name,
+                      product_name: p.product_name,
+                      product_description: p.description || p.product_name,
+                      warranty: p.warranty || '12 Months',
+                      unit_price: String(tierPrice || p.sales_price || p.purchase_price || 0),
+                      stock_qty: p.stock_qty || 0,
+                      cost_price: p.purchase_price || 0,
+                      qty: '1'
+                    });
+                  }}
+                />
+                <button id="ADD_PRODUCT" type="button" className="erp-btn" title="Add New Product" onClick={() => navigate('/GI/PRODUCTINFORMATION.aspx')}>+</button>
+              </div>
+            </div>
+            <div className="col-md-1 col-4">
+              <label className="erp-field-label">Qty</label>
+              <input id="PRODUCT_QTY" className="erp-input text-center" value={line.qty} onChange={(e) => setLine({ ...line, qty: e.target.value })} />
+            </div>
+            <div className="col-md-1 col-4">
+              <label className="erp-field-label">Unit Price</label>
+              <input id="UNIT_PRICE" className="erp-input text-end" value={line.unit_price} onChange={(e) => setLine({ ...line, unit_price: e.target.value })} />
+            </div>
+            <div className="col-md-1 col-4">
+              <label className="erp-field-label">Warranty</label>
+              <input id="WARRANTY" className="erp-input text-center" value={line.warranty} onChange={(e) => setLine({ ...line, warranty: e.target.value })} />
+            </div>
+            <div className="col-md-1 col-12">
+              <button type="button" className="erp-btn erp-btn-primary w-100" onClick={handleAddSalesLineOnly}>+ Add</button>
+            </div>
           </div>
+
+          {showAdvanced && (
+            <div className="pt-2 mt-2 border-top" style={{ borderColor: '#cbd8eb' }}>
+              <div className="row g-2 align-items-end mb-2">
+                <div className="col-md-2">
+                  <label className="erp-field-label">Price Tier</label>
+                  <select id="DropDownListSalesPrice" className="erp-select" value={header.price_tier} onChange={(e) => setHeader({ ...header, price_tier: e.target.value })}>
+                    <option value="SALES_PRICE">Sales Price</option>
+                    <option value="WHOLE_SALES_PRICE">Wholesale Price</option>
+                    <option value="DEALER_PRICE">Dealer Price</option>
+                  </select>
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Delivery Store</label>
+                  <select id="DropDownStore" className="erp-select" value={header.store_name} onChange={(e) => setHeader({ ...header, store_name: e.target.value })}>
+                    <option value="SHOW ROOM">SHOW ROOM</option>
+                    <option value="SHOW ROOM2">SHOW ROOM2</option>
+                    <option value="MAIN GODOWN">MAIN GODOWN</option>
+                  </select>
+                </div>
+                <div className="col-md-3">
+                  <label className="erp-field-label">Pick In-Stock Serial</label>
+                  <AutocompleteInput
+                    id="SERIAL_FROM"
+                    placeholder="Select serial from stock..."
+                    value={line.serial_from}
+                    onChange={(v) => setLine({ ...line, serial_from: v })}
+                    options={master.serials.filter(s => s.status === 'IN_STOCK')}
+                    labelKey="serial_no"
+                    subKey="product_name"
+                    onSelect={(sn) => {
+                      const p = master.products.find(pr => pr.product_id === sn.product_id);
+                      if (p) {
+                        setLine({
+                          ...line,
+                          serial_from: sn.serial_no,
+                          product_id: p.product_id,
+                          product_group: p.group_name,
+                          product_name: p.product_name,
+                          product_description: p.description,
+                          warranty: p.warranty,
+                          unit_price: String(p.sales_price || p.purchase_price || 0),
+                          stock_qty: p.stock_qty,
+                          qty: '1'
+                        });
+                      }
+                    }}
+                  />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Item Discount (৳)</label>
+                  <input id="DISCOUNT_AMT_SINGLE" className="erp-input text-end" value={line.discount} onChange={(e) => setLine({ ...line, discount: e.target.value })} />
+                </div>
+                <div className="col-md-1">
+                  <label className="erp-field-label">VAT (%)</label>
+                  <input id="MainContent_VAT_PERCENT_ADD_PRODUCT" className="erp-input text-center" value={line.vat_percent} onChange={(e) => setLine({ ...line, vat_percent: e.target.value })} />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Item Remarks</label>
+                  <input id="MainContent_PRODUCT_REMARKS" className="erp-input" placeholder="Remarks..." value={line.item_remarks} onChange={(e) => setLine({ ...line, item_remarks: e.target.value })} />
+                </div>
+              </div>
+              <div className="row g-2 align-items-end">
+                <div className="col-md-2">
+                  <label className="erp-field-label">Customer Group</label>
+                  <AutocompleteInput id="CS_GROUP" value={header.cs_group} onChange={(v) => setHeader({ ...header, cs_group: v })} options={master.traderGroups} labelKey="group_name" />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Product Group</label>
+                  <AutocompleteInput id="PRODUCT_GROUP" value={line.product_group} onChange={(v) => setLine({ ...line, product_group: v })} options={master.productGroups} labelKey="group_name" />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Serial Common</label>
+                  <input id="SERIAL_COMMON" className="erp-input" value={line.serial_common} onChange={(e) => setLine({ ...line, serial_common: e.target.value })} />
+                </div>
+                <div className="col-md-2">
+                  <label className="erp-field-label">Serial To</label>
+                  <input id="SERIAL_TO" className="erp-input" value={line.serial_to} onChange={(e) => setLine({ ...line, serial_to: e.target.value })} />
+                </div>
+                <div className="col-md-4 d-flex flex-wrap gap-3 align-items-center pb-1">
+                  <label className="erp-label d-flex align-items-center gap-1">
+                    <input id="ADVANCESALES" type="checkbox" checked={header.advance_sales} onChange={(e) => setHeader({ ...header, advance_sales: e.target.checked })} />
+                    Advance Sales
+                  </label>
+                  <label className="erp-label d-flex align-items-center gap-1">
+                    <input id="RadioButtonList2_0" type="radio" name="sSer" checked={line.serial_mode === 'single'} onChange={() => setLine({ ...line, serial_mode: 'single' })} />
+                    Single Serial
+                  </label>
+                  <label className="erp-label d-flex align-items-center gap-1">
+                    <input id="RadioButtonList2_1" type="radio" name="sSer" checked={line.serial_mode === 'seq'} onChange={() => setLine({ ...line, serial_mode: 'seq' })} />
+                    Sequence
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Row 1 */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Ref./Bill No.</label></div>
-          <div className="col-md-2"><input id="REF_NO" className="erp-input" value={header.ref_no} onChange={(e) => setHeader({ ...header, ref_no: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Sales Date</label></div>
-          <div className="col-md-1"><input id="SALES_DATE" className="erp-input text-center" value={header.sales_date} onChange={(e) => setHeader({ ...header, sales_date: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Mobile/WO No.</label></div>
-          <div className="col-md-1"><input id="MOBILE_NO" className="erp-input" value={header.mobile_no} onChange={(e) => setHeader({ ...header, mobile_no: e.target.value })} /></div>
-          <div className="col-md-1">
-            <button id="MainContent_MOBILE_SEARCH" className="erp-btn w-100" onClick={() => {
-              const found = salesList.find(s => s.mobile_no && s.mobile_no.includes(header.mobile_no));
-              if (found) loadInvoice(found);
-              else notify('No invoice found for this mobile number', 'error');
-            }}>Seach</button>
-          </div>
-          <div className="col-md-1"><label className="erp-label">Sales ID</label></div>
-          <div className="col-md-2">
-            <AutocompleteInput
-              id="SEARCH_SALES_ID"
-              value={header.search_sales_id}
-              onChange={(v) => setHeader({ ...header, search_sales_id: v })}
-              options={salesList}
-              labelKey="sales_id"
-              subKey="cs_name"
-              onSelect={loadInvoice}
-            />
-          </div>
-          <div className="col-md-1">
-            <button id="PU_ID_SEARCH" className="erp-btn w-100" onClick={async () => {
-              let found = salesList.find(s => s.sales_id === header.search_sales_id);
-              if (!found && header.search_sales_id.trim()) {
-                const res = await fetch(`/api/trading/sales?q=${encodeURIComponent(header.search_sales_id.trim())}&limit=20`);
-                if (res.ok) {
-                  const d = await res.json();
-                  found = (d.list || []).find(s => s.sales_id === header.search_sales_id.trim()) || d.list?.[0];
-                }
-              }
-              if (!found) found = salesList[0];
-              if (found) loadInvoice(found);
-              else notify('Sales ID not found', 'error');
-            }}>Search.</button>
-          </div>
-        </div>
-
-        {/* Row 2 */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Customer Group</label></div>
-          <div className="col-md-4">
-            <AutocompleteInput
-              id="CS_GROUP"
-              value={header.cs_group}
-              onChange={(v) => setHeader({ ...header, cs_group: v })}
-              options={master.traderGroups}
-              labelKey="group_name"
-            />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Customer Name</label></div>
-          <div className="col-md-4">
-            <AutocompleteInput
-              id="CS_NAME"
-              placeholder="Search by Name or Mobile No."
-              value={header.cs_name}
-              onChange={(v) => setHeader({ ...header, cs_name: v })}
-              options={master.traders}
-              labelKey="cs_name"
-              subKey="mobile"
-              onSelect={(t) => setHeader({ ...header, cs_name: t.cs_name, cs_group: t.group_name, mobile_no: t.mobile || header.mobile_no })}
-            />
-          </div>
-          <div className="col-md-1"><button id="ADD_CS" className="erp-btn w-100" onClick={() => navigate('/GI/CUSTOMERINFORMATION.aspx')}>Add</button></div>
-          <div className="col-md-1"><button id="LEDGER" className="erp-btn w-100" onClick={() => navigate('/GI/CS_REPORTS.aspx')}>Ledger.</button></div>
-        </div>
-
-        {/* Row 3 */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Product Group</label></div>
-          <div className="col-md-4">
-            <AutocompleteInput
-              id="PRODUCT_GROUP"
-              placeholder="Press F2 Group wise Stock"
-              value={line.product_group}
-              onChange={(v) => setLine({ ...line, product_group: v })}
-              options={master.productGroups}
-              labelKey="group_name"
-            />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Item/Model No.</label></div>
-          <div className="col-md-4">
-            <AutocompleteInput
-              id="PRODUCT_NAME"
-              value={line.product_name}
-              onChange={(v) => setLine({ ...line, product_name: v })}
-              options={master.products}
-              labelKey="product_name"
-              subKey="stock_qty"
-              onSelect={(p) => {
-                const tierPrice = header.price_tier === 'WHOLE_SALES_PRICE'
-                  ? p.wholesale_price
-                  : header.price_tier === 'DEALER_PRICE'
-                  ? p.dealer_price
-                  : p.sales_price;
-                setLine({
-                  ...line,
-                  product_id: p.product_id,
-                  product_group: p.group_name,
-                  product_name: p.product_name,
-                  product_description: p.description || p.product_name,
-                  warranty: p.warranty || '12 Months',
-                  unit_price: String(tierPrice || p.sales_price || 0),
-                  stock_qty: p.stock_qty || 0,
-                  cost_price: p.purchase_price || 0,
-                  qty: '1'
-                });
-              }}
-            />
-          </div>
-          <div className="col-md-1"><button id="ADD_PRODUCT" className="erp-btn w-100" onClick={() => navigate('/GI/PRODUCTINFORMATION.aspx')}>Add</button></div>
-          <div className="col-md-1"><button id="PRODUCT_LEDGER" className="erp-btn w-100" onClick={() => navigate('/GI/STOCK_REPORTS.aspx')}>Item Ledger.</button></div>
-        </div>
-
-        {/* Row 4 */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Description</label></div>
-          <div className="col-md-4">
-            <textarea id="MainContent_Product_Description" className="erp-textarea" rows={1} value={line.product_description} readOnly disabled />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Item Remarks</label></div>
-          <div className="col-md-4">
-            <input id="MainContent_PRODUCT_REMARKS" className="erp-input" placeholder="Product Remarks" value={line.item_remarks} onChange={(e) => setLine({ ...line, item_remarks: e.target.value })} />
-          </div>
-          <div className="col-md-1">
-            <select
-              id="DropDownListSalesPrice"
-              className="erp-select"
-              value={header.price_tier}
-              onChange={(e) => setHeader({ ...header, price_tier: e.target.value })}
+        {/* Clean Action Toolbar */}
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <button id="SAVE_BUTTON" className="erp-btn" onClick={handleSave}>Save Invoice</button>
+            <button id="BPRINT" className="erp-btn" onClick={() => handlePrint('invoice')}>Print / Preview</button>
+            <button id="CHALLAN_PRINT" className="erp-btn" onClick={() => handlePrint('challan')}>Challan</button>
+            <button
+              id="WHATSAPP_SEND"
+              className="erp-btn fw-bold"
+              style={{ background: '#ecfdf3', borderColor: '#86efac', color: '#15803d' }}
+              onClick={handleSendWhatsAppInvoice}
             >
-              <option value="SALES_PRICE">Sales Price</option>
-              <option value="WHOLE_SALES_PRICE">Wholesale Price</option>
-              <option value="DEALER_PRICE">Dealer Price</option>
-            </select>
+              WhatsApp Bill
+            </button>
+            <button id="Clear" className="erp-btn" onClick={() => {
+              setHeader({
+                ref_no: '', sales_date: getTodayStr(), mobile_no: '', search_sales_id: '', sales_id: '',
+                cs_group: '', cs_name: '', price_tier: 'SALES_PRICE', advance_sales: false, store_name: 'SHOW ROOM',
+                sales_type: 'CREDIT', collection_type: 'CASH', account_no: '', collection_amount: '', narration: '',
+                service_charge: '0', extra_charge: '0', tax_amount: '0', vat_amount: '0', discount_amount: '0'
+              });
+              setItems([]);
+            }}>Clear / New</button>
           </div>
-          <div className="col-md-1">
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="ADVANCESALES" type="checkbox" checked={header.advance_sales} onChange={(e) => setHeader({ ...header, advance_sales: e.target.checked })} />
-              Advance Sales.
-            </label>
+
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <button id="LEDGER" className="erp-btn" onClick={() => navigate('/GI/CS_REPORTS.aspx')}>Ledger</button>
+            <div className="erp-more-wrap">
+              <button type="button" className="erp-btn" onClick={() => setShowMoreActions(!showMoreActions)}>
+                More Actions ▾
+              </button>
+              {showMoreActions && (
+                <div className="erp-more-menu" onMouseLeave={() => setShowMoreActions(false)}>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); setShowCost(!showCost); notify(`Unit Cost: ${line.cost_price} BDT`); }}>{showCost ? 'Hide Unit Cost' : 'Show Unit Cost'}</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); notify(`SMS Sent to ${header.cs_name || 'Customer'} (${header.mobile_no || '01955541444'}): Invoice ${header.sales_id || 'NEW'} Amount ${netPayable.toFixed(2)} BDT`); }}>Send SMS Alert</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); const n = window.prompt('Invoice Narration:', header.narration); if (n !== null) setHeader({ ...header, narration: n }); }}>Add Narration</button>
+                  <button className="erp-more-item" onClick={() => {
+                    setShowMoreActions(false);
+                    const sc = window.prompt('Service Charge:', header.service_charge);
+                    const ec = window.prompt('Extra Charge:', header.extra_charge);
+                    const dc = window.prompt('Invoice Discount Amount:', header.discount_amount);
+                    if (sc !== null) setHeader({ ...header, service_charge: sc, extra_charge: ec ?? header.extra_charge, discount_amount: dc ?? header.discount_amount });
+                  }}>VAT, Service &amp; Extra Charge</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); navigate('/GI/DATE_WISE_BILL_SEARCH.aspx'); }}>Date Wise Bill Search</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); navigate('/GI/STOCK_REPORTS.aspx'); }}>Item Stock Ledger</button>
+                  <button className="erp-more-item" onClick={() => { setShowMoreActions(false); if (salesList[0]) loadInvoice(salesList[0]); }}>Load Latest Invoice</button>
+                </div>
+              )}
+            </div>
+            <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
           </div>
         </div>
 
-        {/* Row 5: Serial Controls */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-6"></div>
-          <div className="col-md-6 d-flex flex-wrap gap-2 align-items-center justify-content-end">
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="RadioButtonList2_0" type="radio" name="sSer" checked={line.serial_mode === 'single'} onChange={() => setLine({ ...line, serial_mode: 'single' })} />
-              Single Serial
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="RadioButtonList2_1" type="radio" name="sSer" checked={line.serial_mode === 'seq'} onChange={() => setLine({ ...line, serial_mode: 'seq' })} />
-              Secquance Available
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="SERIAL_CLEAR" type="checkbox" checked={line.serial_clear} onChange={(e) => setLine({ ...line, serial_clear: e.target.checked, serial_common: '', serial_from: '', serial_to: '' })} />
-              Serial Clear.
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="PRODUCT_SEARCH" type="checkbox" checked={line.search_by_serial} onChange={(e) => setLine({ ...line, search_by_serial: e.target.checked })} />
-              Search by Serial
-            </label>
-            <label className="erp-label d-flex align-items-center gap-1">
-              <input id="CHECK_DIGIT" type="checkbox" checked={line.check_digit} onChange={(e) => setLine({ ...line, check_digit: e.target.checked })} />
-              Check Digit.
-            </label>
-            <input id="CHECK_DIGIT_TEXTBOX" className="erp-input" style={{ width: '75px' }} value={line.check_digit_val} disabled={!line.check_digit} onChange={(e) => setLine({ ...line, check_digit_val: e.target.value })} />
-          </div>
-        </div>
-
-        {/* Row 6: Serial Inputs */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Serial Common</label></div>
-          <div className="col-md-3"><input id="SERIAL_COMMON" className="erp-input" value={line.serial_common} onChange={(e) => setLine({ ...line, serial_common: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Serial No/From</label></div>
-          <div className="col-md-3">
-            <AutocompleteInput
-              id="SERIAL_FROM"
-              value={line.serial_from}
-              onChange={(v) => setLine({ ...line, serial_from: v })}
-              options={master.serials.filter(s => s.status === 'IN_STOCK')}
-              labelKey="serial_no"
-              subKey="product_name"
-              onSelect={(sn) => {
-                const p = master.products.find(pr => pr.product_id === sn.product_id);
-                if (p) {
-                  setLine({
-                    ...line,
-                    serial_from: sn.serial_no,
-                    product_id: p.product_id,
-                    product_group: p.group_name,
-                    product_name: p.product_name,
-                    product_description: p.description,
-                    warranty: p.warranty,
-                    unit_price: String(p.sales_price),
-                    stock_qty: p.stock_qty,
-                    qty: '1'
-                  });
-                }
-              }}
-            />
-          </div>
-          <div className="col-md-1"><label className="erp-label">Serial To</label></div>
-          <div className="col-md-3"><input id="SERIAL_TO" className="erp-input" value={line.serial_to} onChange={(e) => setLine({ ...line, serial_to: e.target.value })} /></div>
-        </div>
-
-        {/* Row 7: Delivery From, Warranty, Quantity, Unit Price, Discount Amt, VAT(%) */}
-        <div className="row g-1 align-items-center mb-1">
-          <div className="col-md-1"><label className="erp-label">Delivery From</label></div>
-          <div className="col-md-1">
-            <select id="DropDownStore" className="erp-select" value={header.store_name} onChange={(e) => setHeader({ ...header, store_name: e.target.value })}>
-              <option value=""></option>
-              <option value="SHOW ROOM">SHOW ROOM</option>
-              <option value="MAIN GODOWN">MAIN GODOWN</option>
-            </select>
-          </div>
-          <div className="col-md-1"><label className="erp-label">Warranty</label></div>
-          <div className="col-md-1"><input id="WARRANTY" className="erp-input text-center" value={line.warranty} onChange={(e) => setLine({ ...line, warranty: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Quantity</label></div>
-          <div className="col-md-1"><input id="PRODUCT_QTY" className="erp-input text-center" value={line.qty} onChange={(e) => setLine({ ...line, qty: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Unit Price</label></div>
-          <div className="col-md-1"><input id="UNIT_PRICE" className="erp-input text-center" value={line.unit_price} onChange={(e) => setLine({ ...line, unit_price: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">Discount Amt.</label></div>
-          <div className="col-md-1"><input id="DISCOUNT_AMT_SINGLE" className="erp-input text-center" value={line.discount} onChange={(e) => setLine({ ...line, discount: e.target.value })} /></div>
-          <div className="col-md-1"><label className="erp-label">VAT(%)</label></div>
-          <div className="col-md-1"><input id="MainContent_VAT_PERCENT_ADD_PRODUCT" className="erp-input text-center" value={line.vat_percent} onChange={(e) => setLine({ ...line, vat_percent: e.target.value })} /></div>
-        </div>
-
-        {/* Action Toolbar */}
-        <div className="d-flex flex-wrap gap-1 align-items-center mb-1">
-          <button id="SAVE_BUTTON" className="erp-btn" onClick={handleSave}>Save</button>
-          <button id="SAVEALL" className="erp-btn" onClick={handleSave}>Save All</button>
-          <button id="EDIT" className="erp-btn" onClick={handleSave}>Edit</button>
-          <button id="DELETE" className="erp-btn" onClick={handleSave}>Edit Price</button>
-          <button id="MainContent_COSTBUTTON" className="erp-btn" onClick={() => { setShowCost(!showCost); notify(`Unit Cost: ${line.cost_price} BDT`); }}>Show Cost</button>
-          <button id="SALES_PRICE" className="erp-btn" onClick={() => notify(`Sales Price: ${line.unit_price} BDT`)}>Sales Price</button>
-          <button id="BPRINT" className="erp-btn" onClick={() => handlePrint('invoice')}>Print</button>
-          <button id="MainContent_PRINTVIEW" className="erp-btn" onClick={() => handlePrint('invoice')}>Print Preview</button>
-          <button id="CHALLAN_PRINT" className="erp-btn" onClick={() => handlePrint('challan')}>Challan Print</button>
-          <button id="MainContent_SMS_SEND" className="erp-btn" onClick={() => notify(`SMS Sent to ${header.cs_name || 'Customer'} (${header.mobile_no || '01955541444'}): Invoice ${header.sales_id || 'NEW'} Amount ${netPayable.toFixed(2)} BDT`)}>SMS Send</button>
-          <button id="WHATSAPP_SEND" className="erp-btn fw-bold" style={{ background: '#dcfce7', borderColor: '#22c55e', color: '#15803d' }} onClick={handleSendWhatsAppInvoice}>WhatsApp Bill</button>
-          <button id="BTNNARATION" className="erp-btn" onClick={() => {
-            const n = window.prompt('Invoice Narration:', header.narration);
-            if (n !== null) setHeader({ ...header, narration: n });
-          }}>Narration</button>
-          <button id="VAT_OTHERS" className="erp-btn" onClick={() => {
-            const sc = window.prompt('Service Charge:', header.service_charge);
-            const ec = window.prompt('Extra Charge:', header.extra_charge);
-            const dc = window.prompt('Invoice Discount Amount:', header.discount_amount);
-            if (sc !== null) setHeader({ ...header, service_charge: sc, extra_charge: ec ?? header.extra_charge, discount_amount: dc ?? header.discount_amount });
-          }}>VAT &amp; Others</button>
-          <button id="MainContent_SHOW" className="erp-btn" onClick={() => { if (salesList[0]) loadInvoice(salesList[0]); }}>Show</button>
-          <button id="MainContent_EDITGO" className="erp-btn" onClick={() => navigate('/GI/DATE_WISE_BILL_SEARCH.aspx')}>Edit&gt;&gt;</button>
-          <button id="Clear" className="erp-btn" onClick={() => {
-            setHeader({
-              ref_no: '', sales_date: getTodayStr(), mobile_no: '', search_sales_id: '', sales_id: '',
-              cs_group: '', cs_name: '', price_tier: 'SALES_PRICE', advance_sales: false, store_name: 'SHOW ROOM',
-              sales_type: 'CREDIT', collection_type: 'CASH', account_no: '', collection_amount: '', narration: '',
-              service_charge: '0', extra_charge: '0', tax_amount: '0', vat_amount: '0', discount_amount: '0'
-            });
-            setItems([]);
-          }}>Clear/New</button>
-          <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
-          <button id="MainContent_PreviousImage" className="erp-nav-circle-btn" onClick={() => {
-            const next = Math.min(salesList.length - 1, navIdx + 1);
-            setNavIdx(next);
-            loadInvoice(salesList[next]);
-          }}>&lt;</button>
-          <button id="MainContent_PauseImage" className="erp-nav-circle-btn" onClick={() => loadInvoice(salesList[0])}>||</button>
-          <button id="MainContent_NextImage" className="erp-nav-circle-btn" onClick={() => {
-            const prev = Math.max(0, navIdx - 1);
-            setNavIdx(prev);
-            loadInvoice(salesList[prev]);
-          }}>&gt;</button>
-        </div>
-
-        {/* GridView1 */}
+        {/* Inline-Editable GridView1 */}
         <div className="erp-grid-box mb-2">
           <table id="GridView1" className="erp-table">
             <thead>
               <tr>
-                <th>SL</th>
-                <th>Invoice ID</th>
-                <th>Product ID</th>
-                <th>Product Description</th>
-                <th>Warranty</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Discount</th>
-                <th>VAT(%)</th>
-                <th>Total Price</th>
-                <th>Select</th>
-                <th>Edit</th>
-                <th>Delete</th>
+                <th style={{ width: '40px' }}>SL</th>
+                <th style={{ width: '98px' }}>Product ID</th>
+                <th>Item Description &amp; Serial</th>
+                <th style={{ width: '92px' }}>Warranty</th>
+                <th style={{ width: '115px', textAlign: 'center' }}>Qty</th>
+                <th style={{ width: '100px', textAlign: 'right' }}>Unit Price</th>
+                <th style={{ width: '88px', textAlign: 'right' }}>Discount</th>
+                <th style={{ width: '112px', textAlign: 'right' }}>Line Total</th>
+                <th style={{ width: '48px', textAlign: 'center' }}>Remove</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((it, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td>{header.sales_id || 'NEW'}</td>
-                  <td>{it.product_id}</td>
-                  <td>{it.product_description || it.product_name} {it.serial_no ? `(SL: ${it.serial_no})` : ''}</td>
-                  <td>{it.warranty}</td>
-                  <td>{it.qty}</td>
-                  <td>{Number(it.unit_price || 0).toFixed(2)}</td>
-                  <td>{Number(it.discount || 0).toFixed(2)}</td>
-                  <td>{it.vat_percent || 0}</td>
-                  <td>{Number(it.total_price || 0).toFixed(2)}</td>
-                  <td><button className="erp-btn" onClick={() => setLine({ ...line, ...it })}>Select</button></td>
-                  <td><button className="erp-btn" onClick={() => {
-                    setLine({ ...line, ...it });
-                    setItems(items.filter((_, i) => i !== idx));
-                  }}>Edit</button></td>
-                  <td><button className="erp-btn" onClick={() => setItems(items.filter((_, i) => i !== idx))}>Delete</button></td>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="erp-empty-grid">
+                    No items in this invoice yet — scan a barcode/serial or search a product above to start billing.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                items.map((it, idx) => (
+                  <tr key={idx}>
+                    <td>{idx + 1}</td>
+                    <td style={{ fontWeight: 600, color: '#475569' }}>{it.product_id}</td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{it.product_name || it.product_description}</div>
+                      {it.serial_no && <div style={{ fontSize: '11px', color: '#0f3264' }}>SL: {it.serial_no}</div>}
+                    </td>
+                    <td style={{ fontSize: '12px', color: '#475569' }}>{it.warranty || '—'}</td>
+                    <td className="text-center">
+                      <div className="erp-qty-stepper">
+                        <button type="button" onClick={() => updateSalesItem(idx, { qty: Math.max(1, Number(it.qty || 1) - 1) })}>−</button>
+                        <input
+                          value={it.qty}
+                          onChange={(e) => updateSalesItem(idx, { qty: e.target.value })}
+                        />
+                        <button type="button" onClick={() => updateSalesItem(idx, { qty: Number(it.qty || 1) + 1 })}>+</button>
+                      </div>
+                    </td>
+                    <td className="text-end">
+                      <input
+                        className="erp-inline-num"
+                        value={it.unit_price}
+                        onChange={(e) => updateSalesItem(idx, { unit_price: e.target.value })}
+                      />
+                    </td>
+                    <td className="text-end">
+                      <input
+                        className="erp-inline-num"
+                        style={{ width: '72px' }}
+                        value={it.discount || 0}
+                        onChange={(e) => updateSalesItem(idx, { discount: e.target.value })}
+                      />
+                    </td>
+                    <td className="text-end fw-bold">{Number(it.total_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td className="text-center">
+                      <button type="button" className="erp-row-remove" title="Remove item" onClick={() => setItems(items.filter((_, i) => i !== idx))}>×</button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* 4-Column Bottom Panel (Exact match to final_step_79.png) */}
-        <div className="row g-2">
-          <div className="col-md-2">
-            <div className="erp-footer-panel">
-              <div>Stock Qty.: {line.stock_qty}</div>
-              <div>Ledger Amount: {selectedCustomer ? Number(selectedCustomer.current_balance || 0).toFixed(2) : ''}</div>
-              <div>Last Sales Price: {line.unit_price !== '0' ? line.unit_price : ''}</div>
-              <div>Last Sales Serial: {line.serial_from}</div>
-              <div>Total Sales Qty.: {totalQty || ''}</div>
-              {showCost && <div className="text-danger">Cost: {line.cost_price}</div>}
-            </div>
-          </div>
-
-          <div className="col-md-3">
-            <div className="erp-footer-panel">
-              <div className="row g-1 align-items-center mb-1">
-                <div className="col-4"><label className="erp-label">Sales Type</label></div>
-                <div className="col-8">
+        {/* Clean 3-Column Bottom Payment & Prominent Net Payable Summary */}
+        <div className="row g-2 align-items-stretch">
+          <div className="col-md-4">
+            <div className="erp-footer-panel h-100">
+              <div className="erp-zone-title mb-2">Payment &amp; Collection</div>
+              <div className="row g-2">
+                <div className="col-6">
+                  <label className="erp-field-label">Sales Type</label>
                   <select id="DropDownList_Sales_Type" className="erp-select" value={header.sales_type} onChange={(e) => setHeader({ ...header, sales_type: e.target.value })}>
                     <option value="CREDIT">CREDIT</option>
                     <option value="CASH">CASH</option>
                     <option value="ON CONDITION">ON CONDITION</option>
                   </select>
                 </div>
-              </div>
-              <div className="row g-1 align-items-center mb-1">
-                <div className="col-4"><label className="erp-label">Collection Type</label></div>
-                <div className="col-8">
+                <div className="col-6">
+                  <label className="erp-field-label">Collection Method</label>
                   <select id="DropDownCollType" className="erp-select" value={header.collection_type} onChange={(e) => setHeader({ ...header, collection_type: e.target.value })}>
                     <option value="CASH">CASH</option>
                     <option value="MOBILE BANKING">MOBILE BANKING</option>
@@ -1596,41 +1782,64 @@ export function SalesPage() {
                     <option value="NPSB">NPSB</option>
                   </select>
                 </div>
-              </div>
-              <div className="row g-1 align-items-center mb-1">
-                <div className="col-4"><label className="erp-label">Account No.</label></div>
-                <div className="col-8">
-                  <input id="ACC_NO" className="erp-input" value={header.account_no} disabled={header.collection_type === 'CASH'} onChange={(e) => setHeader({ ...header, account_no: e.target.value })} />
-                </div>
-              </div>
-              <div className="row g-1 align-items-center">
-                <div className="col-4"><label className="erp-label">Collection Amount</label></div>
-                <div className="col-5">
-                  <input id="COLL_AMT" className="erp-input" placeholder="Input Collection Amt." value={header.collection_amount} onChange={(e) => setHeader({ ...header, collection_amount: e.target.value })} />
-                </div>
-                <div className="col-3">
-                  <button id="CASHCOLLECTIO" className="erp-btn w-100" onClick={() => notify(`Collection Amount ${header.collection_amount || 0} set`)}>Collection.</button>
+                <div className="col-12">
+                  <label className="erp-field-label">Cash / Paid Received Now (৳)</label>
+                  <div className="d-flex gap-1">
+                    <input id="COLL_AMT" className="erp-input text-end fw-bold" placeholder="0.00" value={header.collection_amount} onChange={(e) => setHeader({ ...header, collection_amount: e.target.value })} />
+                    <button id="CASHCOLLECTIO" type="button" className="erp-btn" onClick={() => setHeader({ ...header, sales_type: 'CASH', collection_amount: String(netPayable.toFixed(2)) })}>
+                      Full Paid
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="col-md-4">
-            <div className="erp-footer-panel">
-              {header.narration && <div>Narration: {header.narration}</div>}
+            <div className="erp-footer-panel h-100">
+              <div className="erp-zone-title mb-2">Discount, Charges &amp; Stock Info</div>
+              <div className="row g-2 mb-2">
+                <div className="col-6">
+                  <label className="erp-field-label">Bill Discount (৳)</label>
+                  <input className="erp-input text-end" value={header.discount_amount} onChange={(e) => setHeader({ ...header, discount_amount: e.target.value })} />
+                </div>
+                <div className="col-6">
+                  <label className="erp-field-label">Account No. (Bank)</label>
+                  <input id="ACC_NO" className="erp-input" value={header.account_no} disabled={header.collection_type === 'CASH'} onChange={(e) => setHeader({ ...header, account_no: e.target.value })} />
+                </div>
+              </div>
+              <div className="erp-bill-summary-row"><span>Total Qty</span><strong>{totalQty} pcs</strong></div>
+              <div className="erp-bill-summary-row"><span>Selected Item Stock</span><strong>{line.stock_qty} pcs</strong></div>
+              {showCost && <div className="erp-bill-summary-row text-danger"><span>Unit Cost Price</span><strong>৳{line.cost_price}</strong></div>}
+              {header.narration && <div className="mt-1 pt-1 border-top" style={{ fontSize: '11.5px', color: '#475569' }}>Note: {header.narration}</div>}
             </div>
           </div>
 
-          <div className="col-md-3">
-            <div className="erp-footer-panel text-end">
-              <div>Total Amount: {totalAmount ? totalAmount.toFixed(2) : ''}</div>
-              <div>Service Charge: {Number(header.service_charge) ? Number(header.service_charge).toFixed(2) : ''}</div>
-              <div>Extra Charge: {Number(header.extra_charge) ? Number(header.extra_charge).toFixed(2) : ''}</div>
-              <div>Add TAX: {Number(header.tax_amount) ? Number(header.tax_amount).toFixed(2) : ''}</div>
-              <div>Add VAT: {Number(header.vat_amount) ? Number(header.vat_amount).toFixed(2) : ''}</div>
-              <div>Discount Amount: {Number(header.discount_amount) ? Number(header.discount_amount).toFixed(2) : ''}</div>
-              <div>Net Payable Amt. {netPayable ? netPayable.toFixed(2) : ''}</div>
-              <div>Invoice Collection Amt. {Number(header.collection_amount) ? Number(header.collection_amount).toFixed(2) : ''}</div>
+          <div className="col-md-4">
+            <div className="erp-bill-summary-card h-100">
+              <div className="erp-bill-summary-row"><span>Subtotal ({totalQty} pcs)</span><span>৳{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+              {Number(header.service_charge) > 0 && <div className="erp-bill-summary-row"><span>Service Charge</span><span>+ ৳{Number(header.service_charge).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>}
+              {Number(header.extra_charge) > 0 && <div className="erp-bill-summary-row"><span>Extra Charge</span><span>+ ৳{Number(header.extra_charge).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>}
+              {Number(header.vat_amount) > 0 && <div className="erp-bill-summary-row"><span>Add VAT</span><span>+ ৳{Number(header.vat_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>}
+              <div className="erp-bill-summary-row"><span>Discount</span><span>− ৳{Number(header.discount_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+              <div className="erp-bill-net-row">
+                <span>Net Payable</span>
+                <span>৳{netPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="erp-bill-summary-row mt-1">
+                <span>Collected Now</span>
+                <strong style={{ color: '#15803d' }}>৳{Number(header.collection_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+              </div>
+              <div
+                className="erp-bill-due-pill"
+                style={{
+                  background: salesDue > 0 ? '#fff7ed' : '#ecfdf3',
+                  color: salesDue > 0 ? '#c2410c' : '#15803d'
+                }}
+              >
+                <span>{salesDue > 0 ? 'Invoice Due Balance' : 'Invoice Paid in Full'}</span>
+                <span>৳{salesDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
             </div>
           </div>
         </div>

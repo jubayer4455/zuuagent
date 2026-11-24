@@ -115,6 +115,15 @@ export const MENU_TREE = [
 
 export const ALL_ROUTES_COUNT = MENU_TREE.reduce((acc, m) => acc + m.items.length, 0);
 
+function findRouteMeta(pathname) {
+  const cur = String(pathname || '').toLowerCase();
+  for (const m of MENU_TREE) {
+    const found = m.items.find(it => it.path.toLowerCase() === cur);
+    if (found) return { module: m.label.trim(), label: found.label, path: found.path };
+  }
+  return null;
+}
+
 export default function Layout({ children }) {
   const { session, master, logout, toast, hasRouteAccess, switchAccount, switchShop } = useErp();
   const [openIdx, setOpenIdx] = useState(null);
@@ -122,15 +131,33 @@ export default function Layout({ children }) {
   const [quickJumpOpen, setQuickJumpOpen] = useState(false);
   const [quickQuery, setQuickQuery] = useState('');
   const [quickActive, setQuickActive] = useState(0);
+  const [recentTabs, setRecentTabs] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('ht_recent_tabs');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const navRef = useRef(null);
   const quickInputRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Track recent visited pages for 1-click multitasking tabs
   useEffect(() => {
     setOpenIdx(null);
     setMobileMenuOpen(false);
     setQuickJumpOpen(false);
+    const meta = findRouteMeta(location.pathname);
+    if (meta) {
+      setRecentTabs(prev => {
+        const filtered = prev.filter(t => t.path.toLowerCase() !== meta.path.toLowerCase());
+        const next = [meta, ...filtered].slice(0, 6);
+        try { sessionStorage.setItem('ht_recent_tabs', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
   }, [location.pathname]);
 
   useEffect(() => {
@@ -143,7 +170,7 @@ export default function Layout({ children }) {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
-  // Global Keyboard Shortcuts Engine (Upgrade 6)
+  // Global Keyboard Shortcuts Engine
   useEffect(() => {
     const onKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -214,7 +241,6 @@ export default function Layout({ children }) {
     navigate('/LOGIN.aspx');
   };
 
-  // Dynamically filter menu items based on the logged-in user's assigned permissions!
   const visibleMenus = useMemo(() => {
     return MENU_TREE.map((m) => ({
       ...m,
@@ -222,7 +248,6 @@ export default function Layout({ children }) {
     })).filter((m) => m.items.length > 0);
   }, [hasRouteAccess]);
 
-  // Flat list of accessible routes for Ctrl+K Quick Jump
   const flatRoutes = useMemo(() => {
     const out = [{ module: 'Home', label: 'Workspace Dashboard', path: '/GI/TREE.aspx' }];
     for (const m of visibleMenus) {
@@ -241,15 +266,8 @@ export default function Layout({ children }) {
       .slice(0, 14);
   }, [flatRoutes, quickQuery]);
 
-  // Resolve current breadcrumb (Module › Page)
-  const currentBreadcrumb = useMemo(() => {
-    const curPath = location.pathname.toLowerCase();
-    for (const m of MENU_TREE) {
-      const found = m.items.find(it => it.path.toLowerCase() === curPath);
-      if (found) return { module: m.label.trim(), page: found.label };
-    }
-    return null;
-  }, [location.pathname]);
+  const currentMeta = useMemo(() => findRouteMeta(location.pathname), [location.pathname]);
+  const visibleRecentTabs = recentTabs.filter(t => hasRouteAccess(t.path));
 
   const isSuperAdmin =
     String(session?.userId || '').toLowerCase() === 'jubayer' ||
@@ -258,19 +276,86 @@ export default function Layout({ children }) {
   return (
     <div id="BBB" className="erp-main-bg">
       <div id="SOFT_HEADER" ref={navRef}>
-        <div className="erp-topbar-row">
-          {/* Left Brand Emblem */}
+        {/* Tier 1: Pure White Clean Brand + Global Search + Shop Switcher + User */}
+        <div className="erp-header-tier1">
           <Link to="/GI/TREE.aspx" className="erp-brand-link" title="HAZI TRADERS Home">
             <img src="/IMAGE/hazi-logo.jpg" alt="HT" className="erp-brand-thumb" />
             <div>
               <div className="erp-brand-title">HAZI TRADERS</div>
-              <div className="erp-brand-sub">01955541444</div>
+              <div className="erp-brand-sub">Hotline: 01955541444</div>
             </div>
           </Link>
 
-          {/* Center Single-Row Horizontal Navigation (Desktop) */}
-          <nav className={`navbar navbar-expand-lg erp-navbar erp-nav-desktop-wrap ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-            <ul id="ulMenu" className="navbar-nav d-flex flex-row flex-wrap mb-0 ms-1" style={{ gap: '1px' }}>
+          <button
+            type="button"
+            className="erp-center-search"
+            onClick={() => {
+              setQuickJumpOpen(true);
+              setQuickQuery('');
+              setQuickActive(0);
+            }}
+          >
+            <span>⌕ &nbsp;Jump to Sales, Purchase, Stock, Reports...</span>
+            <span className="erp-kbd">Ctrl+K</span>
+          </button>
+
+          <div className="erp-topbar-actions">
+            {isSuperAdmin && (master?.branches || []).length > 1 ? (
+              <select
+                id="CMP_NAME"
+                className="erp-shop-select"
+                title="Switch Active Branch / Shop"
+                value={session?.branchName || 'HAZI TRADERS'}
+                onChange={(e) => switchShop(e.target.value)}
+              >
+                {master.branches.map(b => (
+                  <option key={b.branch_id} value={b.branch_name}>{b.branch_name}</option>
+                ))}
+              </select>
+            ) : (
+              <span id="CMP_NAME" className="erp-user-pill" title="Active Branch">
+                {session?.branchName || 'HAZI TRADERS'}
+              </span>
+            )}
+
+            <span id="USER_NAME" className="erp-user-pill" title="Logged in user">
+              <span className="erp-user-dot" />
+              {session?.userName || 'JUBAYER'}
+            </span>
+
+            {session?.userId?.toLowerCase() !== 'jubayer' && (
+              <button
+                type="button"
+                className="erp-btn erp-btn-sm"
+                style={{ background: '#fff7ed', borderColor: '#fdba74', color: '#c2410c' }}
+                onClick={() => switchAccount('jubayer')}
+              >
+                Back to Admin
+              </button>
+            )}
+
+            <button type="button" id="btnLogout" onClick={handleLogout}>
+              Logout
+            </button>
+
+            <button
+              type="button"
+              className="erp-mobile-toggle"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Menu"
+            >
+              {mobileMenuOpen ? '✕' : '☰'}
+            </button>
+          </div>
+        </div>
+
+        {/* Tier 2: Crisp Soft-Light Horizontal Module Strip (Zero Wrapping on Laptops!) */}
+        <div className={`erp-header-tier2 ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+          <nav className="navbar navbar-expand-lg erp-navbar">
+            <ul id="ulMenu" className="navbar-nav d-flex flex-row flex-wrap mb-0 ms-0" style={{ gap: '2px' }}>
+              <li className={`nav-item erp-nav-item ${location.pathname.toLowerCase() === '/gi/tree.aspx' ? 'active-mod' : ''}`}>
+                <Link to="/GI/TREE.aspx" className="nav-link erp-nav-link">Home</Link>
+              </li>
               {visibleMenus.map((m, idx) => {
                 const isModActive = m.items.some(sub => sub.path.toLowerCase() === location.pathname.toLowerCase());
                 return (
@@ -298,7 +383,7 @@ export default function Layout({ children }) {
                                 onClick={() => setOpenIdx(null)}
                               >
                                 <span>{sub.label}</span>
-                                {isActive && <span style={{ fontSize: '10px' }}>●</span>}
+                                {isActive && <span style={{ fontSize: '10px', color: '#0f3264' }}>●</span>}
                               </Link>
                             </li>
                           );
@@ -310,89 +395,60 @@ export default function Layout({ children }) {
               })}
             </ul>
           </nav>
-
-          {/* Right Utilities: Ctrl+K Quick Jump, Shop Switcher, User, Logout, Mobile Toggle */}
-          <div className="erp-topbar-actions">
-            <button
-              type="button"
-              className="erp-quick-jump-btn"
-              onClick={() => {
-                setQuickJumpOpen(true);
-                setQuickQuery('');
-                setQuickActive(0);
-              }}
-              title="Quick Menu Jump (Ctrl+K)"
-            >
-              <span>⌕</span>
-              <span className="qk-text">Menu</span>
-              <span className="erp-kbd">Ctrl+K</span>
-            </button>
-
-            {isSuperAdmin && (master?.branches || []).length > 1 ? (
-              <select
-                id="CMP_NAME"
-                className="erp-shop-select"
-                title="Switch Active Branch / Shop"
-                value={session?.branchName || 'HAZI TRADERS'}
-                onChange={(e) => switchShop(e.target.value)}
-              >
-                {master.branches.map(b => (
-                  <option key={b.branch_id} value={b.branch_name}>{b.branch_name}</option>
-                ))}
-              </select>
-            ) : (
-              <span id="CMP_NAME" className="erp-user-pill" title="Active Branch">
-                {session?.branchName || 'HAZI TRADERS'}
-              </span>
-            )}
-
-            <span id="USER_NAME" className="erp-user-pill" title="Logged in user">
-              ● {session?.userName || 'JUBAYER'}
-            </span>
-
-            {session?.userId?.toLowerCase() !== 'jubayer' && (
-              <button
-                type="button"
-                className="erp-quick-jump-btn"
-                style={{ background: '#ea580c', borderColor: '#c2410c', color: '#fff' }}
-                onClick={() => switchAccount('jubayer')}
-              >
-                Back to Admin
-              </button>
-            )}
-
-            <button type="button" id="btnLogout" onClick={handleLogout}>
-              Logout
-            </button>
-
-            <button
-              type="button"
-              className="erp-mobile-toggle"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle Menu"
-            >
-              {mobileMenuOpen ? '✕' : '☰'}
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Sub-Header Breadcrumb & Keyboard Shortcuts Bar (on all working screens) */}
-      {currentBreadcrumb && (
-        <div className="erp-breadcrumb-bar no-print">
-          <div className="erp-breadcrumb-path">
-            <Link to="/GI/TREE.aspx">Home</Link>
-            <span>›</span>
-            <span>{currentBreadcrumb.module}</span>
-            <span>›</span>
-            <span className="erp-breadcrumb-current">{currentBreadcrumb.page}</span>
+      {/* Sub-Header: 1-Click Recent Pages Tabs + Breadcrumb + Keyboard Hints */}
+      {(currentMeta || visibleRecentTabs.length > 0) && (
+        <div className="erp-subbar no-print">
+          <div className="erp-recent-tabs">
+            {currentMeta && (
+              <span className="me-2" style={{ fontSize: '11.5px', color: '#64748b' }}>
+                {currentMeta.module} › <strong style={{ color: '#0b254a' }}>{currentMeta.label}</strong>
+              </span>
+            )}
+            {visibleRecentTabs.length > 0 && (
+              <>
+                <span style={{ color: '#cbd5e1' }}>|</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Recent:</span>
+                {visibleRecentTabs.map((t) => {
+                  const isActive = t.path.toLowerCase() === location.pathname.toLowerCase();
+                  return (
+                    <span key={t.path} className={`erp-recent-tab ${isActive ? 'active' : ''}`}>
+                      <Link
+                        to={t.path}
+                        style={{ color: 'inherit', textDecoration: 'none' }}
+                      >
+                        {t.label}
+                      </Link>
+                      {!isActive && (
+                        <button
+                          type="button"
+                          className="erp-recent-tab-close"
+                          title="Remove tab"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setRecentTabs(prev => {
+                              const next = prev.filter(x => x.path !== t.path);
+                              try { sessionStorage.setItem('ht_recent_tabs', JSON.stringify(next)); } catch {}
+                              return next;
+                            });
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </>
+            )}
           </div>
           <div className="erp-shortcut-hints">
             <span><kbd>Alt+S</kbd> Save</span>
             <span><kbd>Alt+P</kbd> Print</span>
             <span><kbd>Alt+N</kbd> Clear</span>
-            <span><kbd>F2</kbd> Scan/Item</span>
-            <span><kbd>Ctrl+K</kbd> Jump</span>
+            <span><kbd>F2</kbd> Scan</span>
           </div>
         </div>
       )}

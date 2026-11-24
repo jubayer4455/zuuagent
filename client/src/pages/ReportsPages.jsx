@@ -337,6 +337,142 @@ async function executeReport(category, reportName, filters, openPrint) {
   }
 }
 
+function fmtDdMmYyyy(d) {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function QuickDatePills({ onSelect }) {
+  const applyPreset = (preset) => {
+    const now = new Date();
+    const today = fmtDdMmYyyy(now);
+    if (preset === 'today') return onSelect(today, today);
+    if (preset === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      const ys = fmtDdMmYyyy(y);
+      return onSelect(ys, ys);
+    }
+    if (preset === 'week') {
+      const w = new Date(now);
+      w.setDate(w.getDate() - 6);
+      return onSelect(fmtDdMmYyyy(w), today);
+    }
+    if (preset === 'month') {
+      return onSelect(`01/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`, today);
+    }
+    if (preset === 'lastMonth') {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const last = new Date(now.getFullYear(), now.getMonth(), 0);
+      return onSelect(fmtDdMmYyyy(first), fmtDdMmYyyy(last));
+    }
+    if (preset === 'year') {
+      return onSelect(`01/01/${now.getFullYear()}`, today);
+    }
+  };
+
+  return (
+    <div className="erp-date-pills mt-1 mb-2">
+      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, alignSelf: 'center', marginRight: '2px' }}>Quick Date:</span>
+      <button type="button" className="erp-date-pill" onClick={() => applyPreset('today')}>Today</button>
+      <button type="button" className="erp-date-pill" onClick={() => applyPreset('yesterday')}>Yesterday</button>
+      <button type="button" className="erp-date-pill" onClick={() => applyPreset('week')}>Last 7 Days</button>
+      <button type="button" className="erp-date-pill" onClick={() => applyPreset('month')}>This Month</button>
+      <button type="button" className="erp-date-pill" onClick={() => applyPreset('lastMonth')}>Last Month</button>
+      <button type="button" className="erp-date-pill" onClick={() => applyPreset('year')}>This Year</button>
+    </div>
+  );
+}
+
+function SearchableReportTable({ category, list, filters, openPrint, tableId = 'GridView1' }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? list.filter(r => r.toLowerCase().includes(q)) : list;
+
+  return (
+    <div>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div style={{ flex: 1, maxWidth: '380px' }}>
+          <input
+            className="erp-input"
+            placeholder={`⌕ Search ${list.length} reports by keyword (e.g. Profit, Due, Serial)...`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+          Showing {filtered.length} of {list.length} reports
+        </span>
+      </div>
+      <div className="erp-grid-box" style={{ maxHeight: '500px' }}>
+        <table id={tableId} className="erp-table">
+          <thead>
+            <tr>
+              <th style={{ width: '52px' }}>SL</th>
+              <th>Report Name</th>
+              <th style={{ width: '130px', textAlign: 'center' }}>Preview / Excel</th>
+              <th style={{ width: '84px', textAlign: 'center' }}>Print</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={4} className="erp-empty-grid">No report matched "{query}".</td></tr>
+            ) : (
+              filtered.map((r, idx) => (
+                <tr key={r}>
+                  <td>{idx + 1}</td>
+                  <td style={{ fontWeight: 600 }}>{r}</td>
+                  <td><button className="erp-btn erp-btn-sm w-100" onClick={() => executeReport(category, r, filters, openPrint)}>Preview / Excel</button></td>
+                  <td><button id="PRINT" className="erp-btn erp-btn-sm w-100" onClick={() => executeReport(category, r, filters, openPrint)}>Print</button></td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SearchableRadioList({ list, selected, onSelect, name, idPrefix, cols = 'col-md-6' }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? list.filter(r => r.toLowerCase().includes(q)) : list;
+
+  return (
+    <div className="mb-2">
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div style={{ flex: 1, maxWidth: '360px' }}>
+          <input
+            className="erp-input"
+            placeholder={`⌕ Filter ${list.length} reports...`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+          Showing {filtered.length} of {list.length} reports
+        </span>
+      </div>
+      <div className="row g-2 p-2 border rounded" style={{ backgroundColor: '#fafcff', maxHeight: '380px', overflowY: 'auto' }}>
+        {filtered.map((r, idx) => (
+          <div key={r} className={cols}>
+            <label className="erp-label d-flex align-items-center gap-2" style={{ cursor: 'pointer', whiteSpace: 'normal' }}>
+              <input
+                id={`${idPrefix}_${idx}`}
+                type="radio"
+                name={name}
+                checked={selected === r}
+                onChange={() => onSelect(r)}
+              />
+              {r}
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // 49. PURCHASE_REPORTS.aspx — Purchase Register
 export function PurchaseReportsPage() {
   const { master, openPrint } = useErp();
@@ -371,26 +507,14 @@ export function PurchaseReportsPage() {
           <div className="col-md-1"><AutocompleteInput id="BRAND_NAME" value={filters.brandName} onChange={(v) => setFilters({ ...filters, brandName: v })} options={master.brands} labelKey="brand_name" /></div>
         </div>
 
-        <div className="d-flex justify-content-between align-items-center">
-          <div className="erp-sublegend">Please Print Your Report.</div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="d-flex justify-content-between align-items-center mb-1">
+          <div className="erp-sublegend mb-0">Select &amp; Run Purchase Report</div>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
 
-        <div className="erp-grid-box" style={{ maxHeight: '540px', maxWidth: '680px' }}>
-          <table id="GridView1" className="erp-table">
-            <thead><tr><th>SL</th><th>Reports Name</th><th>Preview/Excel</th><th>Print</th></tr></thead>
-            <tbody>
-              {PURCHASE_REPORT_LIST.map((r, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td className="fw-bold">{r}</td>
-                  <td style={{ width: '110px' }}><button className="erp-btn w-100" onClick={() => executeReport('PURCHASE', r, filters, openPrint)}>Preview/Excel</button></td>
-                  <td style={{ width: '70px' }}><button className="erp-btn w-100" onClick={() => executeReport('PURCHASE', r, filters, openPrint)}>Print</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SearchableReportTable category="PURCHASE" list={PURCHASE_REPORT_LIST} filters={filters} openPrint={openPrint} tableId="GridView1" />
       </fieldset>
     </div>
   );
@@ -441,23 +565,11 @@ export function SalesReportsPage() {
           <div className="col-md-4 text-end"><button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button></div>
         </div>
 
-        <div className="erp-sublegend">Please Print Your Report.</div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
 
-        <div className="erp-grid-box" style={{ maxHeight: '530px', maxWidth: '680px' }}>
-          <table id="GridView1" className="erp-table">
-            <thead><tr><th>SL</th><th>Reports Name</th><th>Preview/Excel</th><th>Print</th></tr></thead>
-            <tbody>
-              {SALES_REPORT_LIST.map((r, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td className="fw-bold">{r}</td>
-                  <td style={{ width: '110px' }}><button className="erp-btn w-100" onClick={() => executeReport('SALES', r, filters, openPrint)}>Preview/Excel</button></td>
-                  <td style={{ width: '70px' }}><button className="erp-btn w-100" onClick={() => executeReport('SALES', r, filters, openPrint)}>Print</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <div className="erp-sublegend">Select &amp; Run Sales Report</div>
+
+        <SearchableReportTable category="SALES" list={SALES_REPORT_LIST} filters={filters} openPrint={openPrint} tableId="GridView1" />
       </fieldset>
     </div>
   );
@@ -501,26 +613,14 @@ export function TradersReportsPage() {
           <div className="col-md-2"><AutocompleteInput id="MPO_NAME" value={filters.mpoName} onChange={(v) => setFilters({ ...filters, mpoName: v })} options={master.employees} labelKey="employee_name" /></div>
         </div>
 
-        <div className="d-flex justify-content-between align-items-center">
-          <div className="erp-sublegend">Please Print Your Report.</div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="d-flex justify-content-between align-items-center mb-1">
+          <div className="erp-sublegend mb-0">Select &amp; Run Trader Report</div>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
 
-        <div className="erp-grid-box" style={{ maxHeight: '530px', maxWidth: '680px' }}>
-          <table id="GridView2" className="erp-table">
-            <thead><tr><th>SL</th><th>Reports Name</th><th>Preview/Excel</th><th>Print</th></tr></thead>
-            <tbody>
-              {CS_REPORT_LIST.map((r, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td className="fw-bold">{r}</td>
-                  <td style={{ width: '110px' }}><button className="erp-btn w-100" onClick={() => executeReport('CS', r, filters, openPrint)}>Preview/Excel</button></td>
-                  <td style={{ width: '70px' }}><button className="erp-btn w-100" onClick={() => executeReport('CS', r, filters, openPrint)}>Print</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SearchableReportTable category="CS" list={CS_REPORT_LIST} filters={filters} openPrint={openPrint} tableId="GridView2" />
       </fieldset>
     </div>
   );
@@ -575,26 +675,14 @@ export function AccountsReportsPage() {
           </div>
         </div>
 
-        <div className="d-flex justify-content-between align-items-center">
-          <div className="erp-sublegend">Please Print Your Report.</div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="d-flex justify-content-between align-items-center mb-1">
+          <div className="erp-sublegend mb-0">Select &amp; Run Accounts Report</div>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
 
-        <div className="erp-grid-box" style={{ maxHeight: '530px', maxWidth: '680px' }}>
-          <table id="GridView1" className="erp-table">
-            <thead><tr><th>SL</th><th>Reports Name</th><th>Preview/Excel</th><th>Print</th></tr></thead>
-            <tbody>
-              {ACCOUNTS_REPORT_LIST.map((r, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td className="fw-bold">{r}</td>
-                  <td style={{ width: '110px' }}><button className="erp-btn w-100" onClick={() => executeReport('ACCOUNTS', r, filters, openPrint)}>Preview/Excel</button></td>
-                  <td style={{ width: '70px' }}><button className="erp-btn w-100" onClick={() => executeReport('ACCOUNTS', r, filters, openPrint)}>Print</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SearchableReportTable category="ACCOUNTS" list={ACCOUNTS_REPORT_LIST} filters={filters} openPrint={openPrint} tableId="GridView1" />
       </fieldset>
     </div>
   );
@@ -650,26 +738,14 @@ export function StockReportsPage() {
           <div className="col-md-1"><AutocompleteInput id="MainContent_BRAND_NAME" value={filters.brandName} onChange={(v) => setFilters({ ...filters, brandName: v })} options={master.brands} labelKey="brand_name" /></div>
         </div>
 
-        <div className="d-flex justify-content-between align-items-center">
-          <div className="erp-sublegend">Please Print Your Report.</div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="d-flex justify-content-between align-items-center mb-1">
+          <div className="erp-sublegend mb-0">Select &amp; Run Stock Report</div>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
 
-        <div className="erp-grid-box" style={{ maxHeight: '530px', maxWidth: '680px' }}>
-          <table id="GridView2" className="erp-table">
-            <thead><tr><th>SL</th><th>Reports Name</th><th>Preview/Excel</th><th>Print</th></tr></thead>
-            <tbody>
-              {STOCK_REPORT_LIST.map((r, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td className="fw-bold">{r}</td>
-                  <td style={{ width: '110px' }}><button className="erp-btn w-100" onClick={() => executeReport('STOCK', r, filters, openPrint)}>Preview/Excel</button></td>
-                  <td style={{ width: '70px' }}><button className="erp-btn w-100" onClick={() => executeReport('STOCK', r, filters, openPrint)}>Print</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SearchableReportTable category="STOCK" list={STOCK_REPORT_LIST} filters={filters} openPrint={openPrint} tableId="GridView2" />
       </fieldset>
     </div>
   );
@@ -708,29 +784,22 @@ export function BankReportsPage() {
           <div className="col-md-3"><AutocompleteInput id="MainContent_CS_NAME" value={filters.csName} onChange={(v) => setFilters({ ...filters, csName: v })} options={master.traders} labelKey="cs_name" /></div>
         </div>
 
-        <div className="erp-sublegend">Please Select Your Report.</div>
-        <div className="row g-2 p-2 border rounded mb-2" style={{ backgroundColor: '#f8f9fa' }}>
-          {BANK_REPORT_LIST.map((r, idx) => (
-            <div key={idx} className="col-md-6">
-              <label className="erp-label d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-                <input
-                  id={`MainContent_RadioButtonpurchas_${idx}`}
-                  type="radio"
-                  name="bankReport"
-                  checked={selectedReport === r}
-                  onChange={() => setSelectedReport(r)}
-                />
-                {r}
-              </label>
-            </div>
-          ))}
-        </div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="erp-sublegend">Select Bank Report</div>
+        <SearchableRadioList
+          list={BANK_REPORT_LIST}
+          selected={selectedReport}
+          onSelect={setSelectedReport}
+          name="bankReport"
+          idPrefix="MainContent_RadioButtonpurchas"
+        />
 
         <div className="d-flex gap-2">
-          <button id="PRINT" className="erp-btn" onClick={() => {
+          <button id="PRINT" className="erp-btn erp-btn-primary" onClick={() => {
             if (!selectedReport) return notify('Please select a report', 'error');
             executeReport('BANK', selectedReport, filters, openPrint);
-          }}>Print</button>
+          }}>Print / Preview</button>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
       </fieldset>
@@ -773,26 +842,20 @@ export function RmaReportsPage() {
           <div className="col-md-2"><AutocompleteInput id="PRODUCT_NAME" value={filters.productName} onChange={(v) => setFilters({ ...filters, productName: v })} options={master.products} labelKey="product_name" /></div>
         </div>
 
-        <div className="erp-sublegend">Please Select Your Report.</div>
-        <div className="row g-1 p-2 border rounded mb-2" style={{ backgroundColor: '#f8f9fa', maxHeight: '420px', overflowY: 'auto' }}>
-          {RMA_REPORT_LIST.map((r, idx) => (
-            <div key={idx} className="col-md-4">
-              <label className="erp-label d-flex align-items-center gap-1" style={{ cursor: 'pointer' }}>
-                <input
-                  id={`RadioButtonsales_${idx}`}
-                  type="radio"
-                  name="rmaReport"
-                  checked={selectedReport === r}
-                  onChange={() => setSelectedReport(r)}
-                />
-                {r}
-              </label>
-            </div>
-          ))}
-        </div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="erp-sublegend">Select RMA Report</div>
+        <SearchableRadioList
+          list={RMA_REPORT_LIST}
+          selected={selectedReport}
+          onSelect={setSelectedReport}
+          name="rmaReport"
+          idPrefix="RadioButtonsales"
+          cols="col-md-4"
+        />
 
         <div className="d-flex gap-2">
-          <button id="PRINT" className="erp-btn" onClick={() => executeReport('RMA', selectedReport, filters, openPrint)}>Print</button>
+          <button id="PRINT" className="erp-btn erp-btn-primary" onClick={() => executeReport('RMA', selectedReport, filters, openPrint)}>Print / Preview</button>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
       </fieldset>
@@ -833,26 +896,19 @@ export function ModificationReportsPage() {
           </div>
         </div>
 
-        <div className="erp-sublegend">Please Select Your Report.</div>
-        <div className="row g-2 p-2 border rounded mb-2" style={{ backgroundColor: '#f8f9fa' }}>
-          {MODIFICATION_REPORT_LIST.map((r, idx) => (
-            <div key={idx} className="col-md-6">
-              <label className="erp-label d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-                <input
-                  id={`MainContent_RadioButtonsales_${idx}`}
-                  type="radio"
-                  name="modReport"
-                  checked={selectedReport === r}
-                  onChange={() => setSelectedReport(r)}
-                />
-                {r}
-              </label>
-            </div>
-          ))}
-        </div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
+
+        <div className="erp-sublegend">Select Modification Log Report</div>
+        <SearchableRadioList
+          list={MODIFICATION_REPORT_LIST}
+          selected={selectedReport}
+          onSelect={setSelectedReport}
+          name="modReport"
+          idPrefix="MainContent_RadioButtonsales"
+        />
 
         <div className="d-flex gap-2">
-          <button id="MainContent_PRINT1" className="erp-btn" onClick={() => executeReport('MODIFICATION', selectedReport, filters, openPrint)}>Print</button>
+          <button id="MainContent_PRINT1" className="erp-btn erp-btn-primary" onClick={() => executeReport('MODIFICATION', selectedReport, filters, openPrint)}>Print / Preview</button>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
       </fieldset>
@@ -904,7 +960,7 @@ export function ExportExcelPage() {
   return (
     <div className="erp-container">
       <fieldset className="erp-fieldset mb-2">
-        <legend className="erp-legend">Accounts Register — Please Select Parameter.</legend>
+        <legend className="erp-legend">Accounts Register — Export to Excel</legend>
         <div className="row g-1 align-items-center mb-1">
           <div className="col-md-1"><label className="erp-label">Date.</label></div>
           <div className="col-md-2"><input id="DATE1" className="erp-input text-center" value={filters.date1} onChange={(e) => setFilters({ ...filters, date1: e.target.value })} /></div>
@@ -926,27 +982,20 @@ export function ExportExcelPage() {
           <div className="col-md-2"><AutocompleteInput id="PRODUCT_NAME" value={filters.productName} onChange={(v) => setFilters({ ...filters, productName: v })} options={master.products} labelKey="product_name" /></div>
         </div>
 
-        <div className="erp-sublegend">Please Select Exported Report.</div>
-        <div className="row g-1 p-2 border rounded mb-2" style={{ backgroundColor: '#f8f9fa' }}>
-          {EXPORT_EXCEL_LIST.map((r, idx) => (
-            <div key={idx} className="col-md-6">
-              <label className="erp-label d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-                <input
-                  id={`RadioButtonList1_${idx}`}
-                  type="radio"
-                  name="excelReport"
-                  checked={selectedReport === r}
-                  onChange={() => setSelectedReport(r)}
-                />
-                {r}
-              </label>
-            </div>
-          ))}
-        </div>
+        <QuickDatePills onSelect={(date1, date2) => setFilters(f => ({ ...f, date1, date2 }))} />
 
-        <div className="d-flex gap-2">
-          <button id="SEARCH" className="erp-btn" onClick={handleSearch}>Search</button>
-          <button id="EXPORT" className="erp-btn" onClick={handleExportExcel}>Export to Excel</button>
+        <div className="erp-sublegend">Select Export Report</div>
+        <SearchableRadioList
+          list={EXPORT_EXCEL_LIST}
+          selected={selectedReport}
+          onSelect={setSelectedReport}
+          name="excelReport"
+          idPrefix="RadioButtonList1"
+        />
+
+        <div className="d-flex flex-wrap gap-2">
+          <button id="SEARCH" className="erp-btn" onClick={handleSearch}>Preview Data</button>
+          <button id="EXPORT" className="erp-btn erp-btn-primary" onClick={handleExportExcel}>⬇ Export to Excel (.xlsx)</button>
           <button id="MainContent_Button1" className="erp-btn" onClick={() => setPreview(null)}>Clear</button>
           <button id="MainContent_EXIT" className="erp-btn" onClick={() => navigate('/GI/TREE.aspx')}>Exit</button>
         </div>
