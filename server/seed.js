@@ -21,8 +21,8 @@ export function seedDatabase() {
     db.prepare(`
       INSERT OR IGNORE INTO branches (branch_id, company_id, branch_name, address, phone, email, manager_name, status, logo_url, invoice_footer)
       VALUES
-        ('CMP001', 'CMPS01', 'HAZI TRADERS', 'Toyenbee circular road, motijheel, dhaka-1000', '01818524712, 01402338209', 'info@hazierp.top', 'JUBAYER AHMED', 'ACTIVE', '/IMAGE/unisoft.svg', 'Warranty void if sticker removed or burn/physical damage.'),
-        ('CMP002', 'CMPS01', 'HAZI TRADERS-2', 'Rahmania Internation Complex, Toyenbee circular road, motijheel, dhaka-1000', '01818524712, 01402338209', 'info@hazierp.top', 'JUBAYER AHMED', 'ACTIVE', '/IMAGE/unisoft.svg', 'Warranty void if sticker removed or burn/physical damage.')
+        ('CMP001', 'CMPS01', 'HAZI TRADERS', 'Toyenbee circular road, motijheel, dhaka-1000', '01955541444', 'info@hazierp.top', 'JUBAYER AHMED', 'ACTIVE', '/IMAGE/hazi-logo.jpg', 'Warranty void if sticker removed or burn/physical damage.'),
+        ('CMP002', 'CMPS01', 'HAZI TRADERS-2', 'Rahmania Internation Complex, Toyenbee circular road, motijheel, dhaka-1000', '01955541444', 'info@hazierp.top', 'JUBAYER AHMED', 'ACTIVE', '/IMAGE/hazi-logo.jpg', 'Warranty void if sticker removed or burn/physical damage.')
     `).run();
   }
 

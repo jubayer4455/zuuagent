@@ -1,9 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useErp } from '../context/ErpContext.jsx';
 import { openWhatsAppChat } from '../utils/whatsapp.js';
 
 export default function PrintModal() {
   const { modalDoc, closePrint, session, master, notify } = useErp();
+
+  useEffect(() => {
+    if (!modalDoc) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closePrint();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modalDoc, closePrint]);
+
   if (!modalDoc) return null;
 
   const {
@@ -21,13 +31,14 @@ export default function PrintModal() {
 
   // Lookup Active Shop's custom Invoice Branding (Name, Logo, Address, Phone, Footer)
   const activeShopName = session?.branchName || 'HAZI TRADERS';
-  const activeShop = master.branches.find(b => b.branch_name === activeShopName) || {
-    branch_name: activeShopName,
-    address: 'Motijheel Commercial Area, Dhaka',
-    phone: '01818524712, 01402338209',
-    email: 'info@hazierp.top',
-    logo_url: '/IMAGE/unisoft.svg',
-    invoice_footer: 'Warranty void if sticker removed or burn/physical damage.'
+  const matchedShop = master.branches.find(b => b.branch_name === activeShopName);
+  const activeShop = {
+    branch_name: matchedShop?.branch_name || activeShopName,
+    address: matchedShop?.address || 'Toyenbee circular road, Motijheel, Dhaka-1000',
+    phone: matchedShop?.phone && !matchedShop.phone.includes('01818524712') ? matchedShop.phone : '01955541444',
+    email: matchedShop?.email || 'info@hazierp.top',
+    logo_url: matchedShop?.logo_url && matchedShop.logo_url !== '/IMAGE/unisoft.svg' ? matchedShop.logo_url : '/IMAGE/hazi-logo.jpg',
+    invoice_footer: matchedShop?.invoice_footer || 'Warranty void if sticker removed or burn/physical damage.'
   };
 
   const handleDownloadExcel = async () => {
@@ -81,7 +92,7 @@ export default function PrintModal() {
     const rowPreview = rows.slice(0, 12).map(r => r.join(' | ')).join('\n');
     const msg = [
       `*${activeShop.branch_name}*`,
-      `${activeShop.address || 'Dhaka'} | Tel: ${activeShop.phone || '01818524712'}`,
+      `${activeShop.address || 'Dhaka'} | Tel: ${activeShop.phone || '01955541444'}`,
       `----------------------------`,
       `*${title}*`,
       subtitle || '',
@@ -158,7 +169,7 @@ export default function PrintModal() {
                     {activeShop.branch_name}
                   </div>
                   <div style={{ fontSize: '13.5px' }}>
-                    {activeShop.address || 'Motijheel Commercial Area, Dhaka'} | Mobile: {activeShop.phone || '01818524712, 01402338209'}
+                    {activeShop.address || 'Toyenbee circular road, Motijheel, Dhaka-1000'} | Mobile: {activeShop.phone || '01955541444'}
                   </div>
                 </div>
               </div>

@@ -128,11 +128,11 @@ export function initDatabase() {
       company_id TEXT NOT NULL,
       branch_name TEXT NOT NULL,
       address TEXT DEFAULT 'DHAKA',
-      phone TEXT DEFAULT '01818524712, 01402338209',
+      phone TEXT DEFAULT '01955541444',
       email TEXT DEFAULT 'info@hazierp.top',
       manager_name TEXT DEFAULT 'JUBAYER AHMED',
       status TEXT DEFAULT 'ACTIVE',
-      logo_url TEXT DEFAULT '/IMAGE/unisoft.svg',
+      logo_url TEXT DEFAULT '/IMAGE/hazi-logo.jpg',
       invoice_footer TEXT DEFAULT 'Warranty void if sticker removed or burn/physical damage.'
     );
 

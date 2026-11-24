@@ -60,11 +60,11 @@ export function mapBakTablesToErp(rawTables = {}) {
           company_id: str(c.COMPANY_ID_MASTER, companies[0].company_id),
           branch_name: bname,
           address: str(c.ADDRESS, 'Toyenbee circular road, motijheel, dhaka-1000'),
-          phone: str(c.MOBILE || c.PHONE, '01818524712, 01402338209'),
+          phone: str(c.MOBILE || c.PHONE, '01955541444'),
           email: str(c.EMAIL, 'info@hazierp.top'),
           manager_name: 'JUBAYER AHMED',
           status: str(c.STATUS, 'Y') === 'N' ? 'INACTIVE' : 'ACTIVE',
-          logo_url: '/IMAGE/unisoft.svg',
+          logo_url: '/IMAGE/hazi-logo.jpg',
           invoice_footer: 'Warranty void if sticker removed or burn/physical damage.'
         };
       })

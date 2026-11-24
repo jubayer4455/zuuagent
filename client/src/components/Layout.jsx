@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useErp } from '../context/ErpContext.jsx';
 import PrintModal from './PrintModal.jsx';
@@ -85,7 +85,7 @@ export const MENU_TREE = [
     ]
   },
   {
-    label: 'Accounts ',
+    label: 'Accounts',
     items: [
       { label: 'Payment', path: '/GI/PAYMENT.aspx' },
       { label: 'Collection', path: '/GI/COLLECTIONS.aspx' },
@@ -116,14 +116,21 @@ export const MENU_TREE = [
 export const ALL_ROUTES_COUNT = MENU_TREE.reduce((acc, m) => acc + m.items.length, 0);
 
 export default function Layout({ children }) {
-  const { session, logout, toast, hasRouteAccess, switchAccount } = useErp();
+  const { session, master, logout, toast, hasRouteAccess, switchAccount, switchShop } = useErp();
   const [openIdx, setOpenIdx] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [quickJumpOpen, setQuickJumpOpen] = useState(false);
+  const [quickQuery, setQuickQuery] = useState('');
+  const [quickActive, setQuickActive] = useState(0);
   const navRef = useRef(null);
+  const quickInputRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     setOpenIdx(null);
+    setMobileMenuOpen(false);
+    setQuickJumpOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -136,45 +143,140 @@ export default function Layout({ children }) {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
+  // Global Keyboard Shortcuts Engine (Upgrade 6)
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setQuickJumpOpen(prev => !prev);
+        setQuickQuery('');
+        setQuickActive(0);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setOpenIdx(null);
+        setQuickJumpOpen(false);
+        return;
+      }
+      if (e.key === 'F2') {
+        const el =
+          document.getElementById('SALES_BARCODE_SCAN') ||
+          document.getElementById('PURCHASE_BARCODE_SCAN') ||
+          document.getElementById('PRODUCT_NAME');
+        if (el) {
+          e.preventDefault();
+          el.focus();
+          el.select?.();
+        }
+        return;
+      }
+      if (e.altKey && e.key.toLowerCase() === 's') {
+        const btn =
+          document.getElementById('SAVE_BUTTON') ||
+          document.getElementById('SAVE') ||
+          document.getElementById('Button2');
+        if (btn) {
+          e.preventDefault();
+          btn.click();
+        }
+      } else if (e.altKey && e.key.toLowerCase() === 'p') {
+        const btn =
+          document.getElementById('BPRINT') ||
+          document.getElementById('PRINT') ||
+          document.getElementById('MainContent_PRINT');
+        if (btn) {
+          e.preventDefault();
+          btn.click();
+        }
+      } else if (e.altKey && e.key.toLowerCase() === 'n') {
+        const btn =
+          document.getElementById('Clear') ||
+          document.getElementById('CLEAR') ||
+          document.getElementById('MainContent_CLEAR');
+        if (btn) {
+          e.preventDefault();
+          btn.click();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (quickJumpOpen) {
+      setTimeout(() => quickInputRef.current?.focus(), 20);
+    }
+  }, [quickJumpOpen]);
+
   const handleLogout = async () => {
     await logout();
     navigate('/LOGIN.aspx');
   };
 
   // Dynamically filter menu items based on the logged-in user's assigned permissions!
-  const visibleMenus = MENU_TREE.map((m) => ({
-    ...m,
-    items: m.items.filter((sub) => hasRouteAccess(sub.path))
-  })).filter((m) => m.items.length > 0);
+  const visibleMenus = useMemo(() => {
+    return MENU_TREE.map((m) => ({
+      ...m,
+      items: m.items.filter((sub) => hasRouteAccess(sub.path))
+    })).filter((m) => m.items.length > 0);
+  }, [hasRouteAccess]);
+
+  // Flat list of accessible routes for Ctrl+K Quick Jump
+  const flatRoutes = useMemo(() => {
+    const out = [{ module: 'Home', label: 'Workspace Dashboard', path: '/GI/TREE.aspx' }];
+    for (const m of visibleMenus) {
+      for (const item of m.items) {
+        out.push({ module: m.label.trim(), label: item.label, path: item.path });
+      }
+    }
+    return out;
+  }, [visibleMenus]);
+
+  const filteredQuickRoutes = useMemo(() => {
+    const q = quickQuery.trim().toLowerCase();
+    if (!q) return flatRoutes.slice(0, 14);
+    return flatRoutes
+      .filter(r => r.label.toLowerCase().includes(q) || r.module.toLowerCase().includes(q))
+      .slice(0, 14);
+  }, [flatRoutes, quickQuery]);
+
+  // Resolve current breadcrumb (Module › Page)
+  const currentBreadcrumb = useMemo(() => {
+    const curPath = location.pathname.toLowerCase();
+    for (const m of MENU_TREE) {
+      const found = m.items.find(it => it.path.toLowerCase() === curPath);
+      if (found) return { module: m.label.trim(), page: found.label };
+    }
+    return null;
+  }, [location.pathname]);
+
+  const isSuperAdmin =
+    String(session?.userId || '').toLowerCase() === 'jubayer' ||
+    session?.permissionType === 'A';
 
   return (
     <div id="BBB" className="erp-main-bg">
       <div id="SOFT_HEADER" ref={navRef}>
-        <div className="soft-header-top">
-          {session?.userId?.toLowerCase() !== 'jubayer' && (
-            <button
-              type="button"
-              className="erp-btn me-2"
-              style={{ height: '19px', fontSize: '11.5px', padding: '0 8px' }}
-              onClick={() => switchAccount('jubayer')}
-            >
-              Back to Admin (JUBAYER)
-            </button>
-          )}
-          <span id="Label1" style={{ color: 'Black' }}>Branch Name: </span>
-          <span id="CMP_NAME" style={{ color: 'Black', marginRight: '6px' }}>{session?.branchName || 'HAZI TRADERS'}</span>
-          <span id="Label3" style={{ color: 'Black' }}>Login by: </span>
-          <span id="USER_NAME" style={{ color: 'Black' }}>{session?.userName || 'JUBAYER'}</span>
-        </div>
+        <div className="erp-topbar-row">
+          {/* Left Brand Emblem */}
+          <Link to="/GI/TREE.aspx" className="erp-brand-link" title="HAZI TRADERS Home">
+            <img src="/IMAGE/hazi-logo.jpg" alt="HT" className="erp-brand-thumb" />
+            <div>
+              <div className="erp-brand-title">HAZI TRADERS</div>
+              <div className="erp-brand-sub">01955541444</div>
+            </div>
+          </Link>
 
-        <nav className="navbar navbar-expand-lg navbar-light bg-light erp-navbar">
-          <div className="container-fluid px-1">
-            <div style={{ textAlign: 'left' }} className="d-flex align-items-center flex-wrap" id="navbarMenu">
-              <ul id="ulMenu" className="navbar-nav d-flex flex-row flex-wrap mb-0 ms-0">
-                {visibleMenus.map((m, idx) => (
+          {/* Center Single-Row Horizontal Navigation (Desktop) */}
+          <nav className={`navbar navbar-expand-lg erp-navbar erp-nav-desktop-wrap ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+            <ul id="ulMenu" className="navbar-nav d-flex flex-row flex-wrap mb-0 ms-1" style={{ gap: '1px' }}>
+              {visibleMenus.map((m, idx) => {
+                const isModActive = m.items.some(sub => sub.path.toLowerCase() === location.pathname.toLowerCase());
+                return (
                   <li
                     key={m.label}
-                    className={`nav-item me-2 dropdown erp-nav-item ${openIdx === idx ? 'open' : ''}`}
+                    className={`nav-item dropdown erp-nav-item ${openIdx === idx ? 'open' : ''} ${isModActive ? 'active-mod' : ''}`}
                     style={{ position: 'relative' }}
                   >
                     <span
@@ -186,49 +288,173 @@ export default function Layout({ children }) {
                     </span>
                     {openIdx === idx && (
                       <ul className="erp-dropdown-menu">
-                        {m.items.map((sub) => (
-                          <li key={sub.path}>
-                            <Link
-                              to={sub.path}
-                              className="erp-dropdown-item"
-                              onClick={() => setOpenIdx(null)}
-                            >
-                              {sub.label}
-                            </Link>
-                          </li>
-                        ))}
+                        {m.items.map((sub) => {
+                          const isActive = sub.path.toLowerCase() === location.pathname.toLowerCase();
+                          return (
+                            <li key={sub.path}>
+                              <Link
+                                to={sub.path}
+                                className={`erp-dropdown-item ${isActive ? 'active-route' : ''}`}
+                                onClick={() => setOpenIdx(null)}
+                              >
+                                <span>{sub.label}</span>
+                                {isActive && <span style={{ fontSize: '10px' }}>●</span>}
+                              </Link>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </li>
-                ))}
-              </ul>
+                );
+              })}
+            </ul>
+          </nav>
 
+          {/* Right Utilities: Ctrl+K Quick Jump, Shop Switcher, User, Logout, Mobile Toggle */}
+          <div className="erp-topbar-actions">
+            <button
+              type="button"
+              className="erp-quick-jump-btn"
+              onClick={() => {
+                setQuickJumpOpen(true);
+                setQuickQuery('');
+                setQuickActive(0);
+              }}
+              title="Quick Menu Jump (Ctrl+K)"
+            >
+              <span>⌕</span>
+              <span className="qk-text">Menu</span>
+              <span className="erp-kbd">Ctrl+K</span>
+            </button>
+
+            {isSuperAdmin && (master?.branches || []).length > 1 ? (
+              <select
+                id="CMP_NAME"
+                className="erp-shop-select"
+                title="Switch Active Branch / Shop"
+                value={session?.branchName || 'HAZI TRADERS'}
+                onChange={(e) => switchShop(e.target.value)}
+              >
+                {master.branches.map(b => (
+                  <option key={b.branch_id} value={b.branch_name}>{b.branch_name}</option>
+                ))}
+              </select>
+            ) : (
+              <span id="CMP_NAME" className="erp-user-pill" title="Active Branch">
+                {session?.branchName || 'HAZI TRADERS'}
+              </span>
+            )}
+
+            <span id="USER_NAME" className="erp-user-pill" title="Logged in user">
+              ● {session?.userName || 'JUBAYER'}
+            </span>
+
+            {session?.userId?.toLowerCase() !== 'jubayer' && (
               <button
                 type="button"
-                id="btnLogout"
-                onClick={handleLogout}
+                className="erp-quick-jump-btn"
+                style={{ background: '#ea580c', borderColor: '#c2410c', color: '#fff' }}
+                onClick={() => switchAccount('jubayer')}
               >
-                Logout
+                Back to Admin
               </button>
-            </div>
+            )}
+
+            <button type="button" id="btnLogout" onClick={handleLogout}>
+              Logout
+            </button>
+
+            <button
+              type="button"
+              className="erp-mobile-toggle"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Menu"
+            >
+              {mobileMenuOpen ? '✕' : '☰'}
+            </button>
           </div>
-        </nav>
+        </div>
       </div>
 
+      {/* Sub-Header Breadcrumb & Keyboard Shortcuts Bar (on all working screens) */}
+      {currentBreadcrumb && (
+        <div className="erp-breadcrumb-bar no-print">
+          <div className="erp-breadcrumb-path">
+            <Link to="/GI/TREE.aspx">Home</Link>
+            <span>›</span>
+            <span>{currentBreadcrumb.module}</span>
+            <span>›</span>
+            <span className="erp-breadcrumb-current">{currentBreadcrumb.page}</span>
+          </div>
+          <div className="erp-shortcut-hints">
+            <span><kbd>Alt+S</kbd> Save</span>
+            <span><kbd>Alt+P</kbd> Print</span>
+            <span><kbd>Alt+N</kbd> Clear</span>
+            <span><kbd>F2</kbd> Scan/Item</span>
+            <span><kbd>Ctrl+K</kbd> Jump</span>
+          </div>
+        </div>
+      )}
+
+      {/* Polished Toast Notification */}
       {toast && (
-        <div style={{
-          position: 'fixed',
-          top: '56px',
-          right: '18px',
-          zIndex: 4500,
-          backgroundColor: toast.type === 'error' ? '#dc3545' : '#14a44d',
-          color: '#fff',
-          padding: '6px 16px',
-          borderRadius: '4px',
-          fontWeight: 'bold',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-        }}>
-          {toast.msg}
+        <div className={`erp-toast ${toast.type === 'error' ? 'erp-toast-error' : 'erp-toast-success'}`}>
+          <span>{toast.type === 'error' ? '⚠' : '✓'}</span>
+          <span>{toast.msg}</span>
+        </div>
+      )}
+
+      {/* Ctrl+K Quick Menu Jump Modal */}
+      {quickJumpOpen && (
+        <div className="quick-jump-backdrop no-print" onClick={() => setQuickJumpOpen(false)}>
+          <div className="quick-jump-box" onClick={(e) => e.stopPropagation()}>
+            <input
+              ref={quickInputRef}
+              className="quick-jump-input"
+              placeholder="Type any page name (e.g. Sales, Purchase, Stock, Backup, User)..."
+              value={quickQuery}
+              onChange={(e) => {
+                setQuickQuery(e.target.value);
+                setQuickActive(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setQuickActive(prev => Math.min(filteredQuickRoutes.length - 1, prev + 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setQuickActive(prev => Math.max(0, prev - 1));
+                } else if (e.key === 'Enter' && filteredQuickRoutes[quickActive]) {
+                  e.preventDefault();
+                  navigate(filteredQuickRoutes[quickActive].path);
+                  setQuickJumpOpen(false);
+                }
+              }}
+            />
+            <div className="quick-jump-list">
+              {filteredQuickRoutes.length === 0 ? (
+                <div className="text-center py-3 text-muted" style={{ fontSize: '12.5px' }}>
+                  No matching menu option found.
+                </div>
+              ) : (
+                filteredQuickRoutes.map((r, i) => (
+                  <button
+                    key={r.path}
+                    type="button"
+                    className={`quick-jump-item ${i === quickActive ? 'active' : ''}`}
+                    onClick={() => {
+                      navigate(r.path);
+                      setQuickJumpOpen(false);
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{r.label}</span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>{r.module}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 

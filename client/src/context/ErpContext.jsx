@@ -44,8 +44,8 @@ export function ErpProvider({ children }) {
     problems: [],
     stores: [{ store_id: 'ST001', store_name: 'SHOW ROOM' }],
     branches: [
-      { branch_id: 'BR001', branch_name: 'HAZI TRADERS', address: 'Motijheel Commercial Area, Dhaka', phone: '01818524712' },
-      { branch_id: 'BR002', branch_name: 'HAZI TRADERS-2', address: 'Uttara Sector-7, Dhaka', phone: '01818524712' }
+      { branch_id: 'CMP001', branch_name: 'HAZI TRADERS', address: 'Toyenbee circular road, motijheel, dhaka-1000', phone: '01955541444', logo_url: '/IMAGE/hazi-logo.jpg' },
+      { branch_id: 'CMP002', branch_name: 'HAZI TRADERS-2', address: 'Rahmania Internation Complex, Toyenbee circular road, motijheel, dhaka-1000', phone: '01955541444', logo_url: '/IMAGE/hazi-logo.jpg' }
     ],
     serials: [],
     nextIds: {}

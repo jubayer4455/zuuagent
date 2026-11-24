@@ -658,11 +658,11 @@ export function UserEntryPage() {
     branch_id: '',
     branch_name: '',
     address: '',
-    phone: '01818524712',
+    phone: '01955541444',
     email: 'info@hazierp.top',
     manager_name: 'JUBAYER AHMED',
     status: 'ACTIVE',
-    logo_url: '/IMAGE/unisoft.svg',
+    logo_url: '/IMAGE/hazi-logo.jpg',
     invoice_footer: 'Warranty void if sticker removed or burn/physical damage.'
   });
 
@@ -1072,7 +1072,7 @@ export function UserEntryPage() {
         </div>
         <div className="d-flex gap-1 mb-1">
           <button type="button" className="erp-btn" onClick={() => handleShopAction('save')}>Open / Save Shop &amp; Branding</button>
-          <button type="button" className="erp-btn" onClick={() => setShopForm({ branch_id: '', branch_name: '', address: '', phone: '01818524712', email: 'info@hazierp.top', manager_name: 'JUBAYER AHMED', status: 'ACTIVE', logo_url: '/IMAGE/unisoft.svg', invoice_footer: 'Warranty void if sticker removed or burn/physical damage.' })}>Clear Shop Form</button>
+          <button type="button" className="erp-btn" onClick={() => setShopForm({ branch_id: '', branch_name: '', address: '', phone: '01955541444', email: 'info@hazierp.top', manager_name: 'JUBAYER AHMED', status: 'ACTIVE', logo_url: '/IMAGE/hazi-logo.jpg', invoice_footer: 'Warranty void if sticker removed or burn/physical damage.' })}>Clear Shop Form</button>
         </div>
 
         <div className="erp-grid-box" style={{ minHeight: '95px', maxHeight: '130px' }}>
@@ -1083,7 +1083,7 @@ export function UserEntryPage() {
             <tbody>
               {master.branches.map((b) => (
                 <tr key={b.branch_id}>
-                  <td><img src={b.logo_url || '/IMAGE/unisoft.svg'} alt="logo" style={{ width: '22px', height: '22px', borderRadius: '50%' }} /></td>
+                  <td><img src={b.logo_url && b.logo_url !== '/IMAGE/unisoft.svg' ? b.logo_url : '/IMAGE/hazi-logo.jpg'} alt="logo" style={{ width: '26px', height: '26px', objectFit: 'contain', borderRadius: '4px', background: '#fff' }} /></td>
                   <td>{b.branch_id}</td>
                   <td>{b.branch_name}</td>
                   <td>{b.address}</td>

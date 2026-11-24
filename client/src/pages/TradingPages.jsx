@@ -1478,7 +1478,7 @@ export function SalesPage() {
           <button id="BPRINT" className="erp-btn" onClick={() => handlePrint('invoice')}>Print</button>
           <button id="MainContent_PRINTVIEW" className="erp-btn" onClick={() => handlePrint('invoice')}>Print Preview</button>
           <button id="CHALLAN_PRINT" className="erp-btn" onClick={() => handlePrint('challan')}>Challan Print</button>
-          <button id="MainContent_SMS_SEND" className="erp-btn" onClick={() => notify(`SMS Sent to ${header.cs_name || 'Customer'} (${header.mobile_no || '01818524712'}): Invoice ${header.sales_id || 'NEW'} Amount ${netPayable.toFixed(2)} BDT`)}>SMS Send</button>
+          <button id="MainContent_SMS_SEND" className="erp-btn" onClick={() => notify(`SMS Sent to ${header.cs_name || 'Customer'} (${header.mobile_no || '01955541444'}): Invoice ${header.sales_id || 'NEW'} Amount ${netPayable.toFixed(2)} BDT`)}>SMS Send</button>
           <button id="WHATSAPP_SEND" className="erp-btn fw-bold" style={{ background: '#dcfce7', borderColor: '#22c55e', color: '#15803d' }} onClick={handleSendWhatsAppInvoice}>WhatsApp Bill</button>
           <button id="BTNNARATION" className="erp-btn" onClick={() => {
             const n = window.prompt('Invoice Narration:', header.narration);

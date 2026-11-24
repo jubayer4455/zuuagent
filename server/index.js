@@ -603,11 +603,11 @@ app.post('/api/admin/shops', (req, res) => {
     company_id = 'CMP001',
     branch_name,
     address = 'Dhaka, Bangladesh',
-    phone = '01818524712',
+    phone = '01955541444',
     email = 'info@hazierp.top',
     manager_name = 'JUBAYER AHMED',
     status = 'ACTIVE',
-    logo_url = '/IMAGE/unisoft.svg',
+    logo_url = '/IMAGE/hazi-logo.jpg',
     invoice_footer = 'Warranty void if sticker removed or burn/physical damage.'
   } = req.body;
 
@@ -634,11 +634,11 @@ app.post('/api/admin/shops', (req, res) => {
     company_id,
     cleanName,
     address || existing?.address || 'Dhaka, Bangladesh',
-    phone || existing?.phone || '01818524712',
+    phone || existing?.phone || '01955541444',
     email || existing?.email || 'info@hazierp.top',
     manager_name || existing?.manager_name || 'JUBAYER AHMED',
     status || existing?.status || 'ACTIVE',
-    logo_url || existing?.logo_url || '/IMAGE/unisoft.svg',
+    logo_url || existing?.logo_url || '/IMAGE/hazi-logo.jpg',
     invoice_footer || existing?.invoice_footer || 'Warranty void if sticker removed or burn/physical damage.'
   );
 
