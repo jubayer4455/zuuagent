@@ -806,7 +806,7 @@ export function UserEntryPage() {
       notify(data.message);
       await refreshMaster();
       if (action === 'save') {
-        setShopForm({ branch_id: '', branch_name: '', address: '', phone: '01818524712', email: 'info@hazierp.top', manager_name: 'JUBAYER AHMED', status: 'ACTIVE' });
+        setShopForm({ branch_id: '', branch_name: '', address: '', phone: '01955541444', email: 'info@hazierp.top', manager_name: 'JUBAYER AHMED', status: 'ACTIVE', logo_url: '/IMAGE/hazi-logo.jpg', invoice_footer: 'Warranty void if sticker removed or burn/physical damage.' });
       }
     } else {
       notify(data.message || 'Shop operation failed', 'error');
